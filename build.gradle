@@ -23,6 +23,22 @@ android {
   compileSdkVersion 19
   buildToolsVersion '20.0.0'
 
+  final Console console = System.console();
+  signingConfigs {
+    releaseSigning {
+      storeFile file(System.getenv("ANDROID_KEYSTORE"))
+      storePassword new String(console.readPassword("Enter keystore password: "))
+      keyAlias System.getenv("ANDROID_KEYALIAS")
+      keyPassword new String(console.readPassword("Enter key password: "))
+    }
+  }
+
+  buildTypes {
+    release {
+      signingConfig signingConfigs.releaseSigning
+    }
+  }
+
   sourceSets {
     main {
       manifest.srcFile 'AndroidManifest.xml'
