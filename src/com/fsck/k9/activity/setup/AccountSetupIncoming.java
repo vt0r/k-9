@@ -295,11 +295,6 @@ public class AccountSetupIncoming extends K9Activity implements OnClickListener 
             mCurrentPortViewSetting = mPortView.getText().toString();
 
             mSubscribedFoldersOnly.setChecked(mAccount.subscribedFoldersOnly());
-
-            if (savedInstanceState == null) {
-                initializeViewListeners();
-                validateFields();
-            }
         } catch (Exception e) {
             failure(e);
         }
@@ -354,7 +349,7 @@ public class AccountSetupIncoming extends K9Activity implements OnClickListener 
                 AuthType selection = (AuthType) mAuthTypeView.getSelectedItem();
 
                 // Have the user select (or confirm) the client certificate
-                if (AuthType.EXTERNAL.equals(selection)) {
+                if (AuthType.EXTERNAL == selection) {
 
                     // This may again invoke validateFields()
                     mClientCertificateSpinner.chooseCertificate();
@@ -383,8 +378,8 @@ public class AccountSetupIncoming extends K9Activity implements OnClickListener 
     }
 
     @Override
-    protected void onRestoreInstanceState(Bundle savedInstanceState) {
-        super.onRestoreInstanceState(savedInstanceState);
+    protected void onPostCreate(Bundle savedInstanceState) {
+        super.onPostCreate(savedInstanceState);
 
         /*
          * We didn't want the listeners active while the state was being restored
@@ -400,7 +395,7 @@ public class AccountSetupIncoming extends K9Activity implements OnClickListener 
      */
     private void updateViewFromAuthType() {
         AuthType authType = (AuthType) mAuthTypeView.getSelectedItem();
-        boolean isAuthTypeExternal = AuthType.EXTERNAL.equals(authType);
+        boolean isAuthTypeExternal = (AuthType.EXTERNAL == authType);
 
         if (isAuthTypeExternal) {
 
@@ -426,10 +421,10 @@ public class AccountSetupIncoming extends K9Activity implements OnClickListener 
      */
     private void validateFields() {
         AuthType authType = (AuthType) mAuthTypeView.getSelectedItem();
-        boolean isAuthTypeExternal = AuthType.EXTERNAL.equals(authType);
+        boolean isAuthTypeExternal = (AuthType.EXTERNAL == authType);
 
         ConnectionSecurity connectionSecurity = (ConnectionSecurity) mSecurityTypeView.getSelectedItem();
-        boolean hasConnectionSecurity = (!connectionSecurity.equals(ConnectionSecurity.NONE));
+        boolean hasConnectionSecurity = (connectionSecurity != ConnectionSecurity.NONE);
 
         if (isAuthTypeExternal && !hasConnectionSecurity) {
 
@@ -459,10 +454,10 @@ public class AccountSetupIncoming extends K9Activity implements OnClickListener 
             mPortView.addTextChangedListener(validationTextWatcher);
 
             authType = (AuthType) mAuthTypeView.getSelectedItem();
-            isAuthTypeExternal = AuthType.EXTERNAL.equals(authType);
+            isAuthTypeExternal = (AuthType.EXTERNAL == authType);
 
             connectionSecurity = (ConnectionSecurity) mSecurityTypeView.getSelectedItem();
-            hasConnectionSecurity = (!connectionSecurity.equals(ConnectionSecurity.NONE));
+            hasConnectionSecurity = (connectionSecurity != ConnectionSecurity.NONE);
         } else {
             mCurrentAuthTypeViewPosition = mAuthTypeView.getSelectedItemPosition();
             mCurrentSecurityTypeViewPosition = mSecurityTypeView.getSelectedItemPosition();
@@ -552,7 +547,7 @@ public class AccountSetupIncoming extends K9Activity implements OnClickListener 
                     String password = null;
                     String clientCertificateAlias = null;
                     AuthType authType = (AuthType) mAuthTypeView.getSelectedItem();
-                    if (AuthType.EXTERNAL.equals(authType)) {
+                    if (AuthType.EXTERNAL == authType) {
                         clientCertificateAlias = mClientCertificateSpinner.getAlias();
                     } else {
                         password = mPasswordView.getText().toString();
@@ -586,7 +581,7 @@ public class AccountSetupIncoming extends K9Activity implements OnClickListener 
             String clientCertificateAlias = null;
 
             AuthType authType = (AuthType) mAuthTypeView.getSelectedItem();
-            if (authType.equals(AuthType.EXTERNAL)) {
+            if (authType == AuthType.EXTERNAL) {
                 clientCertificateAlias = mClientCertificateSpinner.getAlias();
             } else {
                 password = mPasswordView.getText().toString();
