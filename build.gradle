@@ -27,9 +27,22 @@ android {
   signingConfigs {
     releaseSigning {
       storeFile file(System.getenv("ANDROID_KEYSTORE"))
-      storePassword new String(console.readPassword("Enter keystore password: "))
       keyAlias System.getenv("ANDROID_KEYALIAS")
-      keyPassword new String(console.readPassword("Enter key password: "))
+      storePassword "FakePassword"
+      keyPassword "FakePassword"
+    }
+  }
+
+  task checkPasswords << {
+    def keyStorePass = new String(console.readPassword("\nKeystore password: "))
+    def keyPass  = new String(console.readPassword("Key password: "))
+    android.signingConfigs.releaseSigning.storePassword = keyStorePass
+    android.signingConfigs.releaseSigning.keyPassword = keyPass
+  }
+
+  tasks.whenTaskAdded { theTask ->
+    if (theTask.name.equals("packageRelease")) {
+        theTask.dependsOn "checkPasswords"
     }
   }
 
@@ -53,7 +66,6 @@ android {
       assets.srcDirs = ['tests/assets']
     }
   }
-  
 
   // Do not abort build if lint finds errors
   lintOptions {
