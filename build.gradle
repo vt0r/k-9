@@ -1,27 +1,49 @@
 buildscript {
-  repositories {
-    mavenCentral()
-  }
+    repositories {
+        mavenCentral()
+    }
 
-  dependencies {
-    classpath 'com.android.tools.build:gradle:0.12.2'
-  }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:0.12.2'
+        classpath 'com.jakewharton.sdkmanager:gradle-plugin:0.12.0'
+    }
 }
 
+apply plugin: 'android-sdk-manager'
 apply plugin: 'com.android.application'
+apply plugin: 'checkstyle'
+
+repositories {
+    jcenter()
+}
 
 dependencies {
-  compile project(':plugins:Android-PullToRefresh:library')
-  compile project(':plugins:ckChangeLog:library')
-  compile project(':plugins:HoloColorPicker')
-  compile project(':plugins:openpgp-api-library')
-  compile 'com.android.support:support-v13:19.1.0'
-  compile fileTree(dir: 'libs', include: '*.jar')
+    compile project(':plugins:Android-PullToRefresh:library')
+    compile project(':plugins:ckChangeLog:library')
+    compile project(':plugins:HoloColorPicker')
+    compile project(':plugins:openpgp-api-library')
+    compile 'com.android.support:support-v13:19.1.0'
+    compile fileTree(dir: 'libs', include: '*.jar')
+}
+
+project.ext.preDexLibs = !project.hasProperty('disablePreDex')
+
+subprojects {
+    project.plugins.whenPluginAdded { plugin ->
+        if ("com.android.build.gradle.AppPlugin".equals(plugin.class.name) ||
+                "com.android.build.gradle.LibraryPlugin".equals(plugin.class.name)) {
+            project.android.dexOptions.preDexLibraries = rootProject.ext.preDexLibs
+        }
+    }
 }
 
 android {
   compileSdkVersion 19
   buildToolsVersion '20.0.0'
+
+  dexOptions {
+      preDexLibraries = rootProject.ext.preDexLibs
+  }
 
   final Console console = System.console();
   signingConfigs {
@@ -60,10 +82,30 @@ android {
       assets.srcDirs = ['assets']
     }
 
-    androidTest {
-      manifest.srcFile 'tests/AndroidManifest.xml'
-      java.srcDirs = ['tests/src']
-      assets.srcDirs = ['tests/assets']
+    sourceSets {
+        main {
+            manifest.srcFile 'AndroidManifest.xml'
+            java.srcDirs = ['src']
+            res.srcDirs = ['res']
+            assets.srcDirs = ['assets']
+        }
+
+        androidTest {
+            manifest.srcFile 'tests/AndroidManifest.xml'
+            java.srcDirs = ['tests/src']
+            assets.srcDirs = ['tests/assets']
+        }
+    }
+
+    // Do not abort build if lint finds errors
+    lintOptions {
+        abortOnError false
+    }
+
+    packagingOptions {
+        exclude 'META-INF/DEPENDENCIES'
+        exclude 'META-INF/LICENSE'
+        exclude 'META-INF/NOTICE'
     }
   }
 
@@ -79,7 +121,17 @@ android {
   }
 }
 
-task testsOnJVM(type :GradleBuild, dependsOn: assemble) {
-  buildFile = 'tests-on-jvm/build.gradle'
-  tasks = ['test']
+check.dependsOn 'checkstyle'
+task checkstyle(type: Checkstyle) {
+    ignoreFailures = true
+    configFile file("config/checkstyle/checkstyle.xml")
+
+    source 'src'
+    include '**/*.java'
+    classpath = files()
+}
+
+task testsOnJVM(type: GradleBuild, dependsOn: assemble) {
+    buildFile = 'tests-on-jvm/build.gradle'
+    tasks = ['test']
 }
