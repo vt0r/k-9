@@ -38,53 +38,41 @@ subprojects {
 }
 
 android {
-  compileSdkVersion 19
-  buildToolsVersion '20.0.0'
-
-  dexOptions {
-      preDexLibraries = rootProject.ext.preDexLibs
-  }
-
-  final Console console = System.console();
-  signingConfigs {
-    releaseSigning {
-      storeFile file(System.getenv("ANDROID_KEYSTORE"))
-      keyAlias System.getenv("ANDROID_KEYALIAS")
-      storePassword "FakePassword"
-      keyPassword "FakePassword"
-    }
-  }
-
-  task checkPasswords << {
-    def keyStorePass = new String(console.readPassword("\nKeystore password: "))
-    def keyPass  = new String(console.readPassword("Key password: "))
-    android.signingConfigs.releaseSigning.storePassword = keyStorePass
-    android.signingConfigs.releaseSigning.keyPassword = keyPass
-  }
-
-  tasks.whenTaskAdded { theTask ->
-    if (theTask.name.equals("packageRelease")) {
-        theTask.dependsOn "checkPasswords"
-    }
-  }
-
-  buildTypes {
-    release {
-      signingConfig signingConfigs.releaseSigning
-    }
-  }
-
-  sourceSets {
-    main {
-      manifest.srcFile 'AndroidManifest.xml'
-      java.srcDirs = ['src']
-      res.srcDirs = ['res']
-      assets.srcDirs = ['assets']
-    }
+    compileSdkVersion 19
+    buildToolsVersion '20.0.0'
 
     defaultConfig {
         minSdkVersion 15
         targetSdkVersion 17
+    }
+
+    final Console console = System.console();
+    signingConfigs {
+        releaseSigning {
+            storeFile file(System.getenv("ANDROID_KEYSTORE"))
+            keyAlias System.getenv("ANDROID_KEYALIAS")
+            storePassword "FakePassword"
+            keyPassword "FakePassword"
+        }
+    }
+
+    task checkPasswords << {
+        def keyStorePass = new String(console.readPassword("\nKeystore password: "))
+        def keyPass  = new String(console.readPassword("Key password: "))
+        android.signingConfigs.releaseSigning.storePassword = keyStorePass
+        android.signingConfigs.releaseSigning.keyPassword = keyPass
+    }
+
+    tasks.whenTaskAdded { theTask ->
+        if (theTask.name.equals("packageRelease")) {
+            theTask.dependsOn "checkPasswords"
+        }
+    }
+
+    buildTypes {
+        release {
+            signingConfig signingConfigs.releaseSigning
+        }
     }
 
     dexOptions {
@@ -106,16 +94,6 @@ android {
         }
     }
 
-    signingConfigs {
-        release
-    }
-
-    buildTypes {
-        release {
-            signingConfig signingConfigs.release
-        }
-    }
-
     // Do not abort build if lint finds errors
     lintOptions {
         abortOnError false
@@ -126,18 +104,6 @@ android {
         exclude 'META-INF/LICENSE'
         exclude 'META-INF/NOTICE'
     }
-  }
-
-  // Do not abort build if lint finds errors
-  lintOptions {
-    abortOnError false
-  }
-
-  packagingOptions {
-    exclude 'META-INF/DEPENDENCIES'
-    exclude 'META-INF/LICENSE'
-    exclude 'META-INF/NOTICE'
-  }
 }
 
 check.dependsOn 'checkstyle'
