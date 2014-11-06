@@ -82,6 +82,15 @@ android {
       assets.srcDirs = ['assets']
     }
 
+    defaultConfig {
+        minSdkVersion 15
+        targetSdkVersion 17
+    }
+
+    dexOptions {
+        preDexLibraries = rootProject.ext.preDexLibs
+    }
+
     sourceSets {
         main {
             manifest.srcFile 'AndroidManifest.xml'
@@ -94,6 +103,16 @@ android {
             manifest.srcFile 'tests/AndroidManifest.xml'
             java.srcDirs = ['tests/src']
             assets.srcDirs = ['tests/assets']
+        }
+    }
+
+    signingConfigs {
+        release
+    }
+
+    buildTypes {
+        release {
+            signingConfig signingConfigs.release
         }
     }
 
@@ -134,4 +153,17 @@ task checkstyle(type: Checkstyle) {
 task testsOnJVM(type: GradleBuild, dependsOn: assemble) {
     buildFile = 'tests-on-jvm/build.gradle'
     tasks = ['test']
+}
+
+if (project.hasProperty('keyAlias')) {
+    android.signingConfigs.release.keyAlias = keyAlias
+}
+if (project.hasProperty('keyPassword')) {
+    android.signingConfigs.release.keyPassword = keyPassword
+}
+if (project.hasProperty('storeFile')) {
+    android.signingConfigs.release.storeFile = file(storeFile)
+}
+if (project.hasProperty('storePassword')) {
+    android.signingConfigs.release.storePassword = storePassword
 }
