@@ -5,6 +5,7 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.SynchronousQueue;
 
@@ -35,7 +36,7 @@ import com.fsck.k9.mail.Address;
 import com.fsck.k9.mail.Message;
 import com.fsck.k9.mail.MessagingException;
 import com.fsck.k9.mail.internet.BinaryTempFileBody;
-import com.fsck.k9.mail.store.LocalStore;
+import com.fsck.k9.mail.store.local.LocalStore;
 import com.fsck.k9.provider.UnreadWidgetProvider;
 import com.fsck.k9.security.LocalKeyStore;
 import com.fsck.k9.service.BootReceiver;
@@ -88,7 +89,7 @@ public class K9 extends Application {
      *
      * @see ApplicationAware
      */
-    private static List<ApplicationAware> observers = new ArrayList<ApplicationAware>();
+    private static final List<ApplicationAware> observers = new ArrayList<ApplicationAware>();
 
     /**
      * This will be {@code true} once the initialization is complete and {@link #notifyObservers()}
@@ -263,7 +264,7 @@ public class K9 extends Application {
     private static boolean mHideTimeZone = false;
 
     private static SortType mSortType;
-    private static HashMap<SortType, Boolean> mSortAscending = new HashMap<SortType, Boolean>();
+    private static Map<SortType, Boolean> mSortAscending = new HashMap<SortType, Boolean>();
 
     private static boolean sUseBackgroundAsUnreadIndicator = true;
     private static boolean sThreadedViewEnabled = true;
@@ -281,33 +282,6 @@ public class K9 extends Application {
      * @see #areDatabasesUpToDate()
      */
     private static boolean sDatabasesUpToDate = false;
-
-
-    /**
-     * The MIME type(s) of attachments we're willing to view.
-     */
-    public static final String[] ACCEPTABLE_ATTACHMENT_VIEW_TYPES = new String[] {
-        "*/*",
-    };
-
-    /**
-     * The MIME type(s) of attachments we're not willing to view.
-     */
-    public static final String[] UNACCEPTABLE_ATTACHMENT_VIEW_TYPES = new String[] {
-    };
-
-    /**
-     * The MIME type(s) of attachments we're willing to download to SD.
-     */
-    public static final String[] ACCEPTABLE_ATTACHMENT_DOWNLOAD_TYPES = new String[] {
-        "*/*",
-    };
-
-    /**
-     * The MIME type(s) of attachments we're not willing to download to SD.
-     */
-    public static final String[] UNACCEPTABLE_ATTACHMENT_DOWNLOAD_TYPES = new String[] {
-    };
 
     /**
      * For use when displaying that no folder is selected
