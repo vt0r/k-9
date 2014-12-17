@@ -30,7 +30,7 @@ import android.widget.TextView;
  * <li>{@link #actionUpgradeDatabases(Context, Intent)} will call {@link K9#areDatabasesUpToDate()}
  *     to check if we already know whether the databases have been upgraded.</li>
  * <li>{@link K9#areDatabasesUpToDate()} will compare the last known database version stored in a
- *     {@link SharedPreferences} file to {@link com.fsck.k9.mail.store.local.LocalStore#DB_VERSION}. This
+ *     {@link SharedPreferences} file to {@link com.fsck.k9.mailstore.LocalStore#DB_VERSION}. This
  *     is done as an optimization because it's faster than opening all of the accounts' databases
  *     one by one.</li>
  * <li>If there was an error reading the cached database version or if it shows the databases need
@@ -49,7 +49,7 @@ import android.widget.TextView;
  * Currently we make no attempts to stop the background code (e.g. {@link MessagingController}) from
  * opening the accounts' databases. If this happens the upgrade is performed in one of the
  * background threads and not by {@link DatabaseUpgradeService}. But this is not a problem. Due to
- * the locking in {@link Store#getLocalInstance(Account, android.app.Application)} the upgrade
+ * the locking in {@link Store#getLocalInstance(Account, Context)} the upgrade
  * service will block in the {@link Account#getLocalStore()} call and from the outside (especially
  * for this activity) it will appear as if {@link DatabaseUpgradeService} is performing the upgrade.
  * </p>

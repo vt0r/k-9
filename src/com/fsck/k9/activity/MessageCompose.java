@@ -89,9 +89,9 @@ import com.fsck.k9.crypto.PgpData;
 import com.fsck.k9.fragment.ProgressDialogFragment;
 import com.fsck.k9.helper.ContactItem;
 import com.fsck.k9.helper.Contacts;
+import com.fsck.k9.mail.filter.Base64;
 import com.fsck.k9.helper.HtmlConverter;
 import com.fsck.k9.helper.IdentityHelper;
-import com.fsck.k9.helper.StringUtils;
 import com.fsck.k9.helper.Utility;
 import com.fsck.k9.mail.Address;
 import com.fsck.k9.mail.Body;
@@ -101,16 +101,17 @@ import com.fsck.k9.mail.Message.RecipientType;
 import com.fsck.k9.mail.MessagingException;
 import com.fsck.k9.mail.Multipart;
 import com.fsck.k9.mail.Part;
+import com.fsck.k9.mail.internet.MessageExtractor;
 import com.fsck.k9.mail.internet.MimeBodyPart;
 import com.fsck.k9.mail.internet.MimeHeader;
 import com.fsck.k9.mail.internet.MimeMessage;
 import com.fsck.k9.mail.internet.MimeMultipart;
 import com.fsck.k9.mail.internet.MimeUtility;
 import com.fsck.k9.mail.internet.TextBody;
-import com.fsck.k9.mail.internet.TextBodyBuilder;
-import com.fsck.k9.mail.store.local.LocalAttachmentBody;
-import com.fsck.k9.mail.store.local.TempFileBody;
-import com.fsck.k9.mail.store.local.TempFileMessageBody;
+import com.fsck.k9.mailstore.LocalAttachmentBody;
+import com.fsck.k9.mailstore.LocalMessage;
+import com.fsck.k9.mailstore.TempFileBody;
+import com.fsck.k9.mailstore.TempFileMessageBody;
 import com.fsck.k9.view.MessageWebView;
 
 import org.apache.james.mime4j.codec.EncoderUtil;
@@ -436,17 +437,15 @@ public class MessageCompose extends K9Activity implements OnClickListener,
      * Get intent for composing a new message as a reply to the given message. If replyAll is true
      * the function is reply all instead of simply reply.
      * @param context
-     * @param account
      * @param message
      * @param replyAll
      * @param messageBody optional, for decrypted messages, null if it should be grabbed from the given message
      */
     public static Intent getActionReplyIntent(
-        Context context,
-        Account account,
-        Message message,
-        boolean replyAll,
-        String messageBody) {
+            Context context,
+            LocalMessage message,
+            boolean replyAll,
+            String messageBody) {
         Intent i = new Intent(context, MessageCompose.class);
         i.putExtra(EXTRA_MESSAGE_BODY, messageBody);
         i.putExtra(EXTRA_MESSAGE_REFERENCE, message.makeMessageReference());
@@ -469,25 +468,22 @@ public class MessageCompose extends K9Activity implements OnClickListener,
      */
     public static void actionReply(
         Context context,
-        Account account,
-        Message message,
+        LocalMessage message,
         boolean replyAll,
         String messageBody) {
-        context.startActivity(getActionReplyIntent(context, account, message, replyAll, messageBody));
+        context.startActivity(getActionReplyIntent(context, message, replyAll, messageBody));
     }
 
     /**
      * Compose a new message as a forward of the given message.
      * @param context
-     * @param account
      * @param message
      * @param messageBody optional, for decrypted messages, null if it should be grabbed from the given message
      */
     public static void actionForward(
-        Context context,
-        Account account,
-        Message message,
-        String messageBody) {
+            Context context,
+            LocalMessage message,
+            String messageBody) {
         Intent i = new Intent(context, MessageCompose.class);
         i.putExtra(EXTRA_MESSAGE_BODY, messageBody);
         i.putExtra(EXTRA_MESSAGE_REFERENCE, message.makeMessageReference());
@@ -1216,7 +1212,7 @@ public class MessageCompose extends K9Activity implements OnClickListener,
     }
 
     private void addAddresses(MultiAutoCompleteTextView view, String addresses) {
-        if (StringUtils.isNullOrEmpty(addresses)) {
+        if (TextUtils.isEmpty(addresses)) {
             return;
         }
         for (String address : addresses.split(",")) {
@@ -1340,7 +1336,7 @@ public class MessageCompose extends K9Activity implements OnClickListener,
      */
     private MimeMessage createMessage(boolean isDraft) throws MessagingException {
         MimeMessage message = new MimeMessage();
-        message.addSentDate(new Date());
+        message.addSentDate(new Date(), K9.hideTimeZone());
         Address from = new Address(mIdentity.getEmail(), mIdentity.getName());
         message.setFrom(from);
         message.setRecipients(RecipientType.TO, getAddresses(mToView));
@@ -1659,7 +1655,7 @@ public class MessageCompose extends K9Activity implements OnClickListener,
 
             // First item is the body length. We use this to separate the composed reply from the quoted text.
             if (tokenizer.hasMoreTokens()) {
-                String bodyLengthS = Utility.base64Decode(tokenizer.nextToken());
+                String bodyLengthS = Base64.decode(tokenizer.nextToken());
                 try {
                     identity.put(IdentityField.LENGTH, Integer.valueOf(bodyLengthS).toString());
                 } catch (Exception e) {
@@ -1667,16 +1663,16 @@ public class MessageCompose extends K9Activity implements OnClickListener,
                 }
             }
             if (tokenizer.hasMoreTokens()) {
-                identity.put(IdentityField.SIGNATURE, Utility.base64Decode(tokenizer.nextToken()));
+                identity.put(IdentityField.SIGNATURE, Base64.decode(tokenizer.nextToken()));
             }
             if (tokenizer.hasMoreTokens()) {
-                identity.put(IdentityField.NAME, Utility.base64Decode(tokenizer.nextToken()));
+                identity.put(IdentityField.NAME, Base64.decode(tokenizer.nextToken()));
             }
             if (tokenizer.hasMoreTokens()) {
-                identity.put(IdentityField.EMAIL, Utility.base64Decode(tokenizer.nextToken()));
+                identity.put(IdentityField.EMAIL, Base64.decode(tokenizer.nextToken()));
             }
             if (tokenizer.hasMoreTokens()) {
-                identity.put(IdentityField.QUOTED_TEXT_MODE, Utility.base64Decode(tokenizer.nextToken()));
+                identity.put(IdentityField.QUOTED_TEXT_MODE, Base64.decode(tokenizer.nextToken()));
             }
         }
 
@@ -2625,7 +2621,7 @@ public class MessageCompose extends K9Activity implements OnClickListener,
         String name = MimeUtility.getHeaderParameter(contentType, "name");
         if (name != null) {
             Body body = part.getBody();
-            if (body != null && body instanceof LocalAttachmentBody) {
+            if (body instanceof LocalAttachmentBody) {
                 final Uri uri = ((LocalAttachmentBody) body).getContentUri();
                 mHandler.post(new Runnable() {
                     @Override
@@ -2647,7 +2643,7 @@ public class MessageCompose extends K9Activity implements OnClickListener,
      * @param message
      *         The source message used to populate the various text fields.
      */
-    private void processSourceMessage(Message message) {
+    private void processSourceMessage(LocalMessage message) {
         try {
             switch (mAction) {
                 case REPLY:
@@ -2782,7 +2778,7 @@ public class MessageCompose extends K9Activity implements OnClickListener,
         // of the forwarded message in the references and the reply to.  TB
         // only includes ID of the message being forwarded in the reference,
         // even if there are multiple references.
-        if (!StringUtils.isNullOrEmpty(message.getMessageId())) {
+        if (!TextUtils.isEmpty(message.getMessageId())) {
             mInReplyTo = message.getMessageId();
             mReferences = mInReplyTo;
         } else {
@@ -2801,7 +2797,7 @@ public class MessageCompose extends K9Activity implements OnClickListener,
         }
     }
 
-    private void processDraftMessage(Message message) throws MessagingException {
+    private void processDraftMessage(LocalMessage message) throws MessagingException {
         String showQuotedTextMode = "NONE";
 
         mDraftId = MessagingController.getInstance(getApplication()).getId(message);
@@ -2853,7 +2849,7 @@ public class MessageCompose extends K9Activity implements OnClickListener,
             newIdentity.setSignature(k9identity.get(IdentityField.SIGNATURE));
             mSignatureChanged = true;
         } else {
-            newIdentity.setSignatureUse(message.getFolder().getAccount().getSignatureUse());
+            newIdentity.setSignatureUse(message.getFolder().getSignatureUse());
             newIdentity.setSignature(mIdentity.getSignature());
         }
 
@@ -2963,7 +2959,7 @@ public class MessageCompose extends K9Activity implements OnClickListener,
             Part part = MimeUtility.findFirstPartByMimeType(message, "text/html");
             if (part != null) { // Shouldn't happen if we were the one who saved it.
                 mQuotedTextFormat = SimpleMessageFormat.HTML;
-                String text = MimeUtility.getTextFromPart(part);
+                String text = MessageExtractor.getTextFromPart(part);
                 if (K9.DEBUG) {
                     Log.d(K9.LOG_TAG, "Loading message with offset " + bodyOffset + ", length " + bodyLength + ". Text length is " + text.length() + ".");
                 }
@@ -3028,7 +3024,7 @@ public class MessageCompose extends K9Activity implements OnClickListener,
             boolean viewMessageContent) throws MessagingException {
         Part textPart = MimeUtility.findFirstPartByMimeType(message, "text/plain");
         if (textPart != null) {
-            String text = MimeUtility.getTextFromPart(textPart);
+            String text = MessageExtractor.getTextFromPart(textPart);
             if (K9.DEBUG) {
                 Log.d(K9.LOG_TAG, "Loading message with offset " + bodyOffset + ", length " + bodyLength + ". Text length is " + text.length() + ".");
             }
@@ -3231,7 +3227,7 @@ public class MessageCompose extends K9Activity implements OnClickListener,
                 if (K9.DEBUG) {
                     Log.d(K9.LOG_TAG, "getBodyTextFromMessage: HTML requested, HTML found.");
                 }
-                return MimeUtility.getTextFromPart(part);
+                return MessageExtractor.getTextFromPart(part);
             }
 
             part = MimeUtility.findFirstPartByMimeType(message, "text/plain");
@@ -3239,7 +3235,8 @@ public class MessageCompose extends K9Activity implements OnClickListener,
                 if (K9.DEBUG) {
                     Log.d(K9.LOG_TAG, "getBodyTextFromMessage: HTML requested, text found.");
                 }
-                return HtmlConverter.textToHtml(MimeUtility.getTextFromPart(part));
+                String text = MessageExtractor.getTextFromPart(part);
+                return HtmlConverter.textToHtml(text);
             }
         } else if (format == SimpleMessageFormat.TEXT) {
             // Text takes precedence, then html.
@@ -3248,7 +3245,7 @@ public class MessageCompose extends K9Activity implements OnClickListener,
                 if (K9.DEBUG) {
                     Log.d(K9.LOG_TAG, "getBodyTextFromMessage: Text requested, text found.");
                 }
-                return MimeUtility.getTextFromPart(part);
+                return MessageExtractor.getTextFromPart(part);
             }
 
             part = MimeUtility.findFirstPartByMimeType(message, "text/html");
@@ -3256,7 +3253,8 @@ public class MessageCompose extends K9Activity implements OnClickListener,
                 if (K9.DEBUG) {
                     Log.d(K9.LOG_TAG, "getBodyTextFromMessage: Text requested, HTML found.");
                 }
-                return HtmlConverter.htmlToText(MimeUtility.getTextFromPart(part));
+                String text = MessageExtractor.getTextFromPart(part);
+                return HtmlConverter.htmlToText(text);
             }
         }
 
@@ -3438,7 +3436,7 @@ public class MessageCompose extends K9Activity implements OnClickListener,
                         }
                         updateMessageFormat();
                     } else {
-                        processSourceMessage(message);
+                        processSourceMessage((LocalMessage) message);
                         mSourceProcessed = true;
                     }
                 }

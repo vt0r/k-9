@@ -7,7 +7,7 @@ import android.net.Uri;
 import android.util.Log;
 
 import com.fsck.k9.K9;
-import com.fsck.k9.mail.store.StorageManager;
+import com.fsck.k9.mailstore.StorageManager;
 
 /**
  * That BroadcastReceiver is only interested in UNMOUNT events.
@@ -35,9 +35,9 @@ public class StorageGoneReceiver extends BroadcastReceiver {
         final String path = uri.getPath();
 
         if (Intent.ACTION_MEDIA_EJECT.equals(action)) {
-            StorageManager.getInstance(K9.app).onBeforeUnmount(path);
+            StorageManager.getInstance(context).onBeforeUnmount(path);
         } else if (Intent.ACTION_MEDIA_UNMOUNTED.equals(action)) {
-            StorageManager.getInstance(K9.app).onAfterUnmount(path);
+            StorageManager.getInstance(context).onAfterUnmount(path);
         }
     }
 

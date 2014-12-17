@@ -7,7 +7,7 @@ import android.net.Uri;
 import android.util.Log;
 
 import com.fsck.k9.K9;
-import com.fsck.k9.mail.store.StorageManager;
+import com.fsck.k9.mailstore.StorageManager;
 
 /**
  * That BroadcastReceiver is only interested in MOUNT events.
@@ -30,7 +30,7 @@ public class StorageReceiver extends BroadcastReceiver {
         final String path = uri.getPath();
 
         if (Intent.ACTION_MEDIA_MOUNTED.equals(action)) {
-            StorageManager.getInstance(K9.app).onMount(path,
+            StorageManager.getInstance(context).onMount(path,
                     intent.getBooleanExtra("read-only", true));
         }
     }

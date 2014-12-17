@@ -1,6 +1,5 @@
 package com.fsck.k9.controller;
 
-import android.app.Application;
 import android.content.Context;
 import android.util.Log;
 
@@ -11,8 +10,8 @@ import com.fsck.k9.mail.Folder;
 
 import com.fsck.k9.mail.Message;
 import com.fsck.k9.mail.PushReceiver;
-import com.fsck.k9.mail.store.local.LocalFolder;
-import com.fsck.k9.mail.store.local.LocalStore;
+import com.fsck.k9.mailstore.LocalFolder;
+import com.fsck.k9.mailstore.LocalStore;
 import com.fsck.k9.service.SleepService;
 
 import java.util.List;
@@ -21,12 +20,12 @@ import java.util.concurrent.CountDownLatch;
 public class MessagingControllerPushReceiver implements PushReceiver {
     final Account account;
     final MessagingController controller;
-    final Application mApplication;
+    final Context context;
 
-    public MessagingControllerPushReceiver(Application nApplication, Account nAccount, MessagingController nController) {
+    public MessagingControllerPushReceiver(Context context, Account nAccount, MessagingController nController) {
         account = nAccount;
         controller = nController;
-        mApplication = nApplication;
+        this.context = context;
     }
 
     public void messagesFlagsChanged(Folder folder,
@@ -71,13 +70,13 @@ public class MessagingControllerPushReceiver implements PushReceiver {
 
     @Override
     public void sleep(TracingWakeLock wakeLock, long millis) {
-        SleepService.sleep(mApplication, millis, wakeLock, K9.PUSH_WAKE_LOCK_TIMEOUT);
+        SleepService.sleep(context, millis, wakeLock, K9.PUSH_WAKE_LOCK_TIMEOUT);
     }
 
     public void pushError(String errorMessage, Exception e) {
         String errMess = errorMessage;
 
-        controller.notifyUserIfCertificateProblem(mApplication, e, account, true);
+        controller.notifyUserIfCertificateProblem(context, e, account, true);
         if (errMess == null && e != null) {
             errMess = e.getMessage();
         }
@@ -110,7 +109,7 @@ public class MessagingControllerPushReceiver implements PushReceiver {
 
     @Override
     public Context getContext() {
-        return mApplication;
+        return context;
     }
 
 }

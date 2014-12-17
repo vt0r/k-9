@@ -36,8 +36,8 @@ import com.fsck.k9.activity.K9PreferenceActivity;
 import com.fsck.k9.activity.ManageIdentities;
 import com.fsck.k9.mail.Folder;
 import com.fsck.k9.mail.Store;
-import com.fsck.k9.mail.store.local.LocalFolder;
-import com.fsck.k9.mail.store.StorageManager;
+import com.fsck.k9.mailstore.LocalFolder;
+import com.fsck.k9.mailstore.StorageManager;
 import com.fsck.k9.service.MailService;
 
 import org.openintents.openpgp.util.OpenPgpListPreference;
@@ -470,7 +470,7 @@ public class AccountSettings extends K9PreferenceActivity {
         mLocalStorageProvider = (ListPreference) findPreference(PREFERENCE_LOCAL_STORAGE_PROVIDER);
         {
             final Map<String, String> providers;
-            providers = StorageManager.getInstance(K9.app).getAvailableProviders();
+            providers = StorageManager.getInstance(this).getAvailableProviders();
             int i = 0;
             final String[] providerLabels = new String[providers.size()];
             final String[] providerIds = new String[providers.size()];

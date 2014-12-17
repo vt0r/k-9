@@ -15,11 +15,16 @@ import java.util.Set;
 import java.util.concurrent.Future;
 
 import android.app.Activity;
+import android.app.DialogFragment;
 import android.app.Fragment;
+import android.app.LoaderManager;
+import android.app.LoaderManager.LoaderCallbacks;
 import android.content.BroadcastReceiver;
 import android.content.Context;
+import android.content.CursorLoader;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.Loader;
 import android.content.SharedPreferences.Editor;
 import android.database.Cursor;
 import android.graphics.Color;
@@ -30,15 +35,10 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Parcelable;
-import android.app.DialogFragment;
-import android.app.LoaderManager;
-import android.app.LoaderManager.LoaderCallbacks;
-import android.content.CursorLoader;
-import android.content.Loader;
 import android.support.v4.content.LocalBroadcastManager;
-import android.widget.CursorAdapter;
 import android.text.Spannable;
 import android.text.SpannableStringBuilder;
+import android.text.TextUtils;
 import android.text.format.DateUtils;
 import android.text.style.AbsoluteSizeSpan;
 import android.text.style.ForegroundColorSpan;
@@ -59,6 +59,7 @@ import android.widget.AdapterView;
 import android.widget.AdapterView.AdapterContextMenuInfo;
 import android.widget.AdapterView.OnItemClickListener;
 import android.widget.CheckBox;
+import android.widget.CursorAdapter;
 import android.widget.ListView;
 import android.widget.QuickContactBadge;
 import android.widget.TextView;
@@ -81,15 +82,15 @@ import com.fsck.k9.fragment.ConfirmationDialogFragment.ConfirmationDialogFragmen
 import com.fsck.k9.helper.ContactPicture;
 import com.fsck.k9.helper.MergeCursorWithUniqueId;
 import com.fsck.k9.helper.MessageHelper;
-import com.fsck.k9.helper.StringUtils;
 import com.fsck.k9.helper.Utility;
 import com.fsck.k9.mail.Address;
 import com.fsck.k9.mail.Flag;
 import com.fsck.k9.mail.Folder;
 import com.fsck.k9.mail.Message;
 import com.fsck.k9.mail.MessagingException;
-import com.fsck.k9.mail.store.local.LocalFolder;
-import com.fsck.k9.mail.store.local.LocalStore;
+import com.fsck.k9.mailstore.LocalFolder;
+import com.fsck.k9.mailstore.LocalMessage;
+import com.fsck.k9.mailstore.LocalStore;
 import com.fsck.k9.provider.EmailProvider;
 import com.fsck.k9.provider.EmailProvider.MessageColumns;
 import com.fsck.k9.provider.EmailProvider.SpecialColumns;
@@ -100,6 +101,7 @@ import com.fsck.k9.search.SearchSpecification;
 import com.fsck.k9.search.SearchSpecification.SearchCondition;
 import com.fsck.k9.search.SearchSpecification.Searchfield;
 import com.fsck.k9.search.SqlQueryBuilder;
+
 import com.handmark.pulltorefresh.library.ILoadingLayout;
 import com.handmark.pulltorefresh.library.PullToRefreshBase;
 import com.handmark.pulltorefresh.library.PullToRefreshListView;
@@ -426,7 +428,7 @@ public class MessageListFragment extends Fragment implements OnItemClickListener
      * Relevant messages for the current context when we have to remember the chosen messages
      * between user interactions (e.g. selecting a folder for move operation).
      */
-    private List<Message> mActiveMessages;
+    private List<LocalMessage> mActiveMessages;
 
     /* package visibility for faster inner class access */
     MessageHelper mMessageHelper;
@@ -1034,7 +1036,7 @@ public class MessageListFragment extends Fragment implements OnItemClickListener
         return null;
     }
 
-    private Folder getFolderById(Account account, long folderId) {
+    private LocalFolder getFolderById(Account account, long folderId) {
         try {
             LocalStore localStore = account.getLocalStore();
             LocalFolder localFolder = localStore.getFolderById(folderId);
@@ -1188,19 +1190,19 @@ public class MessageListFragment extends Fragment implements OnItemClickListener
         }
     }
 
-    public void onReply(Message message) {
+    public void onReply(LocalMessage message) {
         mFragmentListener.onReply(message);
     }
 
-    public void onReplyAll(Message message) {
+    public void onReplyAll(LocalMessage message) {
         mFragmentListener.onReplyAll(message);
     }
 
-    public void onForward(Message message) {
+    public void onForward(LocalMessage message) {
         mFragmentListener.onForward(message);
     }
 
-    public void onResendMessage(Message message) {
+    public void onResendMessage(LocalMessage message) {
         mFragmentListener.onResendMessage(message);
     }
 
@@ -1308,11 +1310,11 @@ public class MessageListFragment extends Fragment implements OnItemClickListener
         changeSort(sorts[curIndex]);
     }
 
-    private void onDelete(Message message) {
+    private void onDelete(LocalMessage message) {
         onDelete(Collections.singletonList(message));
     }
 
-    private void onDelete(List<Message> messages) {
+    private void onDelete(List<LocalMessage> messages) {
         if (K9.confirmDelete()) {
             // remember the message selection for #onCreateDialog(int)
             mActiveMessages = messages;
@@ -1322,7 +1324,7 @@ public class MessageListFragment extends Fragment implements OnItemClickListener
         }
     }
 
-    private void onDeleteConfirmed(List<Message> messages) {
+    private void onDeleteConfirmed(List<LocalMessage> messages) {
         if (mThreadedList) {
             mController.deleteThreads(messages);
         } else {
@@ -1344,15 +1346,14 @@ public class MessageListFragment extends Fragment implements OnItemClickListener
             }
 
             final String destFolderName = data.getStringExtra(ChooseFolder.EXTRA_NEW_FOLDER);
-            final List<Message> messages = mActiveMessages;
+            final List<LocalMessage> messages = mActiveMessages;
 
             if (destFolderName != null) {
 
                 mActiveMessages = null; // don't need it any more
 
                 if (messages.size() > 0) {
-                    Account account = messages.get(0).getFolder().getAccount();
-                    account.setLastSelectedFolderName(destFolderName);
+                    messages.get(0).getFolder().setLastSelectedFolderName(destFolderName);
                 }
 
                 switch (requestCode) {
@@ -1509,23 +1510,19 @@ public class MessageListFragment extends Fragment implements OnItemClickListener
                 break;
             }
             case R.id.reply: {
-                Message message = getMessageAtPosition(adapterPosition);
-                onReply(message);
+                onReply(getMessageAtPosition(adapterPosition));
                 break;
             }
             case R.id.reply_all: {
-                Message message = getMessageAtPosition(adapterPosition);
-                onReplyAll(message);
+                onReplyAll(getMessageAtPosition(adapterPosition));
                 break;
             }
             case R.id.forward: {
-                Message message = getMessageAtPosition(adapterPosition);
-                onForward(message);
+                onForward(getMessageAtPosition(adapterPosition));
                 break;
             }
             case R.id.send_again: {
-                Message message = getMessageAtPosition(adapterPosition);
-                onResendMessage(message);
+                onResendMessage(getMessageAtPosition(adapterPosition));
                 mSelectedCount = 0;
                 break;
             }
@@ -1538,7 +1535,7 @@ public class MessageListFragment extends Fragment implements OnItemClickListener
                 break;
             }
             case R.id.delete: {
-                Message message = getMessageAtPosition(adapterPosition);
+                LocalMessage message = getMessageAtPosition(adapterPosition);
                 onDelete(message);
                 break;
             }
@@ -1561,23 +1558,19 @@ public class MessageListFragment extends Fragment implements OnItemClickListener
 
             // only if the account supports this
             case R.id.archive: {
-                Message message = getMessageAtPosition(adapterPosition);
-                onArchive(message);
+                onArchive(getMessageAtPosition(adapterPosition));
                 break;
             }
             case R.id.spam: {
-                Message message = getMessageAtPosition(adapterPosition);
-                onSpam(message);
+                onSpam(getMessageAtPosition(adapterPosition));
                 break;
             }
             case R.id.move: {
-                Message message = getMessageAtPosition(adapterPosition);
-                onMove(message);
+                onMove(getMessageAtPosition(adapterPosition));
                 break;
             }
             case R.id.copy: {
-                Message message = getMessageAtPosition(adapterPosition);
-                onCopy(message);
+                onCopy(getMessageAtPosition(adapterPosition));
                 break;
             }
         }
@@ -1710,7 +1703,7 @@ public class MessageListFragment extends Fragment implements OnItemClickListener
 
     class MessageListActivityListener extends ActivityListener {
         @Override
-        public void remoteSearchFailed(Account acct, String folder, final String err) {
+        public void remoteSearchFailed(String folder, final String err) {
             mHandler.post(new Runnable() {
                 @Override
                 public void run() {
@@ -1724,7 +1717,7 @@ public class MessageListFragment extends Fragment implements OnItemClickListener
         }
 
         @Override
-        public void remoteSearchStarted(Account acct, String folder) {
+        public void remoteSearchStarted(String folder) {
             mHandler.progress(true);
             mHandler.updateFooter(mContext.getString(R.string.remote_search_sending_query));
         }
@@ -1735,12 +1728,12 @@ public class MessageListFragment extends Fragment implements OnItemClickListener
         }
 
         @Override
-        public void remoteSearchFinished(Account acct, String folder, int numResults, List<Message> extraResults) {
+        public void remoteSearchFinished(String folder, int numResults, int maxResults, List<Message> extraResults) {
             mHandler.progress(false);
             mHandler.remoteSearchFinished();
             mExtraSearchResults = extraResults;
             if (extraResults != null && extraResults.size() > 0) {
-                mHandler.updateFooter(String.format(mContext.getString(R.string.load_more_messages_fmt), acct.getRemoteSearchNumResults()));
+                mHandler.updateFooter(String.format(mContext.getString(R.string.load_more_messages_fmt), maxResults));
             } else {
                 mHandler.updateFooter("");
             }
@@ -1749,11 +1742,11 @@ public class MessageListFragment extends Fragment implements OnItemClickListener
         }
 
         @Override
-        public void remoteSearchServerQueryComplete(Account account, String folderName, int numResults) {
+        public void remoteSearchServerQueryComplete(String folderName, int numResults, int maxResults) {
             mHandler.progress(true);
-            if (account != null &&  account.getRemoteSearchNumResults() != 0 && numResults > account.getRemoteSearchNumResults()) {
+            if (maxResults != 0 && numResults > maxResults) {
                 mHandler.updateFooter(mContext.getString(R.string.remote_search_downloading_limited,
-                        account.getRemoteSearchNumResults(), numResults));
+                        maxResults, numResults));
             } else {
                 mHandler.updateFooter(mContext.getString(R.string.remote_search_downloading, numResults));
             }
@@ -1943,7 +1936,7 @@ public class MessageListFragment extends Fragment implements OnItemClickListener
             int threadCount = (mThreadedList) ? cursor.getInt(THREAD_COUNT_COLUMN) : 0;
 
             String subject = cursor.getString(SUBJECT_COLUMN);
-            if (StringUtils.isNullOrEmpty(subject)) {
+            if (TextUtils.isEmpty(subject)) {
                 subject = getString(R.string.general_no_subject);
             } else if (threadCount > 1) {
                 // If this is a thread, strip the RE/FW from the subject.  "Be like Outlook."
@@ -2415,7 +2408,7 @@ public class MessageListFragment extends Fragment implements OnItemClickListener
         computeBatchDirection();
     }
 
-    private void onMove(Message message) {
+    private void onMove(LocalMessage message) {
         onMove(Collections.singletonList(message));
     }
 
@@ -2425,7 +2418,7 @@ public class MessageListFragment extends Fragment implements OnItemClickListener
      * @param messages
      *         Never {@code null}.
      */
-    private void onMove(List<Message> messages) {
+    private void onMove(List<LocalMessage> messages) {
         if (!checkCopyOrMovePossible(messages, FolderOperation.MOVE)) {
             return;
         }
@@ -2439,12 +2432,13 @@ public class MessageListFragment extends Fragment implements OnItemClickListener
             folder = null;
         }
 
-        Account account = messages.get(0).getFolder().getAccount();
 
-        displayFolderChoice(ACTIVITY_CHOOSE_FOLDER_MOVE, account, folder, messages);
+        displayFolderChoice(ACTIVITY_CHOOSE_FOLDER_MOVE, folder,
+                messages.get(0).getFolder().getAccountUuid(), null,
+                messages);
     }
 
-    private void onCopy(Message message) {
+    private void onCopy(LocalMessage message) {
         onCopy(Collections.singletonList(message));
     }
 
@@ -2454,7 +2448,7 @@ public class MessageListFragment extends Fragment implements OnItemClickListener
      * @param messages
      *         Never {@code null}.
      */
-    private void onCopy(List<Message> messages) {
+    private void onCopy(List<LocalMessage> messages) {
         if (!checkCopyOrMovePossible(messages, FolderOperation.COPY)) {
             return;
         }
@@ -2468,7 +2462,10 @@ public class MessageListFragment extends Fragment implements OnItemClickListener
             folder = null;
         }
 
-        displayFolderChoice(ACTIVITY_CHOOSE_FOLDER_COPY, mAccount, folder, messages);
+        displayFolderChoice(ACTIVITY_CHOOSE_FOLDER_COPY, folder,
+                messages.get(0).getFolder().getAccountUuid(),
+                null,
+                messages);
     }
 
     /**
@@ -2485,12 +2482,13 @@ public class MessageListFragment extends Fragment implements OnItemClickListener
      *
      * @see #startActivityForResult(Intent, int)
      */
-    private void displayFolderChoice(int requestCode, Account account, Folder folder,
-            List<Message> messages) {
+    private void displayFolderChoice(int requestCode, Folder folder,
+            String accountUuid, String lastSelectedFolderName,
+            List<LocalMessage> messages) {
 
         Intent intent = new Intent(getActivity(), ChooseFolder.class);
-        intent.putExtra(ChooseFolder.EXTRA_ACCOUNT, account.getUuid());
-        intent.putExtra(ChooseFolder.EXTRA_SEL_FOLDER, account.getLastSelectedFolderName());
+        intent.putExtra(ChooseFolder.EXTRA_ACCOUNT, accountUuid);
+        intent.putExtra(ChooseFolder.EXTRA_SEL_FOLDER, lastSelectedFolderName);
 
         if (folder == null) {
             intent.putExtra(ChooseFolder.EXTRA_SHOW_CURRENT, "yes");
@@ -2503,14 +2501,14 @@ public class MessageListFragment extends Fragment implements OnItemClickListener
         startActivityForResult(intent, requestCode);
     }
 
-    private void onArchive(final Message message) {
+    private void onArchive(final LocalMessage message) {
         onArchive(Collections.singletonList(message));
     }
 
-    private void onArchive(final List<Message> messages) {
-        Map<Account, List<Message>> messagesByAccount = groupMessagesByAccount(messages);
+    private void onArchive(final List<LocalMessage> messages) {
+        Map<Account, List<LocalMessage>> messagesByAccount = groupMessagesByAccount(messages);
 
-        for (Entry<Account, List<Message>> entry : messagesByAccount.entrySet()) {
+        for (Entry<Account, List<LocalMessage>> entry : messagesByAccount.entrySet()) {
             Account account = entry.getKey();
             String archiveFolder = account.getArchiveFolderName();
 
@@ -2520,14 +2518,14 @@ public class MessageListFragment extends Fragment implements OnItemClickListener
         }
     }
 
-    private Map<Account, List<Message>> groupMessagesByAccount(final List<Message> messages) {
-        Map<Account, List<Message>> messagesByAccount = new HashMap<Account, List<Message>>();
-        for (Message message : messages) {
-            Account account = message.getFolder().getAccount();
+    private Map<Account, List<LocalMessage>> groupMessagesByAccount(final List<LocalMessage> messages) {
+        Map<Account, List<LocalMessage>> messagesByAccount = new HashMap<Account, List<LocalMessage>>();
+        for (LocalMessage message : messages) {
+            Account account = message.getAccount();
 
-            List<Message> msgList = messagesByAccount.get(account);
+            List<LocalMessage> msgList = messagesByAccount.get(account);
             if (msgList == null) {
-                msgList = new ArrayList<Message>();
+                msgList = new ArrayList<LocalMessage>();
                 messagesByAccount.put(account, msgList);
             }
 
@@ -2536,7 +2534,7 @@ public class MessageListFragment extends Fragment implements OnItemClickListener
         return messagesByAccount;
     }
 
-    private void onSpam(Message message) {
+    private void onSpam(LocalMessage message) {
         onSpam(Collections.singletonList(message));
     }
 
@@ -2546,7 +2544,7 @@ public class MessageListFragment extends Fragment implements OnItemClickListener
      * @param messages
      *         The messages to move to the spam folder. Never {@code null}.
      */
-    private void onSpam(List<Message> messages) {
+    private void onSpam(List<LocalMessage> messages) {
         if (K9.confirmSpam()) {
             // remember the message selection for #onCreateDialog(int)
             mActiveMessages = messages;
@@ -2556,10 +2554,10 @@ public class MessageListFragment extends Fragment implements OnItemClickListener
         }
     }
 
-    private void onSpamConfirmed(List<Message> messages) {
-        Map<Account, List<Message>> messagesByAccount = groupMessagesByAccount(messages);
+    private void onSpamConfirmed(List<LocalMessage> messages) {
+        Map<Account, List<LocalMessage>> messagesByAccount = groupMessagesByAccount(messages);
 
-        for (Entry<Account, List<Message>> entry : messagesByAccount.entrySet()) {
+        for (Entry<Account, List<LocalMessage>> entry : messagesByAccount.entrySet()) {
             Account account = entry.getKey();
             String spamFolder = account.getSpamFolderName();
 
@@ -2583,7 +2581,7 @@ public class MessageListFragment extends Fragment implements OnItemClickListener
      *
      * @return {@code true}, if operation is possible.
      */
-    private boolean checkCopyOrMovePossible(final List<Message> messages,
+    private boolean checkCopyOrMovePossible(final List<LocalMessage> messages,
             final FolderOperation operation) {
 
         if (messages.isEmpty()) {
@@ -2591,11 +2589,11 @@ public class MessageListFragment extends Fragment implements OnItemClickListener
         }
 
         boolean first = true;
-        for (final Message message : messages) {
+        for (final LocalMessage message : messages) {
             if (first) {
                 first = false;
                 // account check
-                final Account account = message.getFolder().getAccount();
+                final Account account = message.getAccount();
                 if ((operation == FolderOperation.MOVE && !mController.isMoveCapable(account)) ||
                         (operation == FolderOperation.COPY && !mController.isCopyCapable(account))) {
                     return false;
@@ -2621,7 +2619,7 @@ public class MessageListFragment extends Fragment implements OnItemClickListener
      * @param destination
      *         The name of the destination folder. Never {@code null}.
      */
-    private void copy(List<Message> messages, final String destination) {
+    private void copy(List<LocalMessage> messages, final String destination) {
         copyOrMove(messages, destination, FolderOperation.COPY);
     }
 
@@ -2633,7 +2631,7 @@ public class MessageListFragment extends Fragment implements OnItemClickListener
      * @param destination
      *         The name of the destination folder. Never {@code null}.
      */
-    private void move(List<Message> messages, final String destination) {
+    private void move(List<LocalMessage> messages, final String destination) {
         copyOrMove(messages, destination, FolderOperation.MOVE);
     }
 
@@ -2649,12 +2647,12 @@ public class MessageListFragment extends Fragment implements OnItemClickListener
      * @param operation
      *         Specifies what operation to perform. Never {@code null}.
      */
-    private void copyOrMove(List<Message> messages, final String destination,
+    private void copyOrMove(List<LocalMessage> messages, final String destination,
             final FolderOperation operation) {
 
-        Map<String, List<Message>> folderMap = new HashMap<String, List<Message>>();
+        Map<String, List<LocalMessage>> folderMap = new HashMap<String, List<LocalMessage>>();
 
-        for (Message message : messages) {
+        for (LocalMessage message : messages) {
             if ((operation == FolderOperation.MOVE && !mController.isMoveCapable(message)) ||
                     (operation == FolderOperation.COPY && !mController.isCopyCapable(message))) {
 
@@ -2673,19 +2671,19 @@ public class MessageListFragment extends Fragment implements OnItemClickListener
                 continue;
             }
 
-            List<Message> outMessages = folderMap.get(folderName);
+            List<LocalMessage> outMessages = folderMap.get(folderName);
             if (outMessages == null) {
-                outMessages = new ArrayList<Message>();
+                outMessages = new ArrayList<LocalMessage>();
                 folderMap.put(folderName, outMessages);
             }
 
             outMessages.add(message);
         }
 
-        for (Map.Entry<String, List<Message>> entry : folderMap.entrySet()) {
+        for (Map.Entry<String, List<LocalMessage>> entry : folderMap.entrySet()) {
             String folderName = entry.getKey();
-            List<Message> outMessages = entry.getValue();
-            Account account = outMessages.get(0).getFolder().getAccount();
+            List<LocalMessage> outMessages = entry.getValue();
+            Account account = outMessages.get(0).getAccount();
 
             if (operation == FolderOperation.MOVE) {
                 if (mThreadedList) {
@@ -2858,7 +2856,7 @@ public class MessageListFragment extends Fragment implements OnItemClickListener
              */
             switch (item.getItemId()) {
             case R.id.delete: {
-                List<Message> messages = getCheckedMessages();
+                List<LocalMessage> messages = getCheckedMessages();
                 onDelete(messages);
                 mSelectedCount = 0;
                 break;
@@ -2886,26 +2884,22 @@ public class MessageListFragment extends Fragment implements OnItemClickListener
 
             // only if the account supports this
             case R.id.archive: {
-                List<Message> messages = getCheckedMessages();
-                onArchive(messages);
+                onArchive(getCheckedMessages());
                 mSelectedCount = 0;
                 break;
             }
             case R.id.spam: {
-                List<Message> messages = getCheckedMessages();
-                onSpam(messages);
+                onSpam(getCheckedMessages());
                 mSelectedCount = 0;
                 break;
             }
             case R.id.move: {
-                List<Message> messages = getCheckedMessages();
-                onMove(messages);
+                onMove(getCheckedMessages());
                 mSelectedCount = 0;
                 break;
             }
             case R.id.copy: {
-                List<Message> messages = getCheckedMessages();
-                onCopy(messages);
+                onCopy(getCheckedMessages());
                 mSelectedCount = 0;
                 break;
             }
@@ -2986,7 +2980,7 @@ public class MessageListFragment extends Fragment implements OnItemClickListener
                 final Folder remoteFolder = mCurrentFolder.folder;
                 remoteFolder.close();
                 // Send a remoteSearchFinished() message for good measure.
-                mListener.remoteSearchFinished(searchAccount, mCurrentFolder.name, 0, null);
+                mListener.remoteSearchFinished(mCurrentFolder.name, 0, searchAccount.getRemoteSearchNumResults(), null);
             } catch (Exception e) {
                 // Since the user is going back, log and squash any exceptions.
                 Log.e(K9.LOG_TAG, "Could not abort remote search before going back", e);
@@ -3115,10 +3109,10 @@ public class MessageListFragment extends Fragment implements OnItemClickListener
         void setMessageListProgress(int level);
         void showThread(Account account, String folderName, long rootId);
         void showMoreFromSameSender(String senderAddress);
-        void onResendMessage(Message message);
-        void onForward(Message message);
-        void onReply(Message message);
-        void onReplyAll(Message message);
+        void onResendMessage(LocalMessage message);
+        void onForward(LocalMessage message);
+        void onReply(LocalMessage message);
+        void onReplyAll(LocalMessage message);
         void openMessage(MessageReference messageReference);
         void setMessageListTitle(String title);
         void setMessageListSubTitle(String subTitle);
@@ -3134,7 +3128,7 @@ public class MessageListFragment extends Fragment implements OnItemClickListener
         changeSort(mSortType);
     }
 
-    private Message getSelectedMessage() {
+    private LocalMessage getSelectedMessage() {
         int listViewPosition = mListView.getSelectedItemPosition();
         int adapterPosition = listViewToAdapterPosition(listViewPosition);
 
@@ -3157,7 +3151,7 @@ public class MessageListFragment extends Fragment implements OnItemClickListener
         return AdapterView.INVALID_POSITION;
     }
 
-    private Message getMessageAtPosition(int adapterPosition) {
+    private LocalMessage getMessageAtPosition(int adapterPosition) {
         if (adapterPosition == AdapterView.INVALID_POSITION) {
             return null;
         }
@@ -3167,7 +3161,7 @@ public class MessageListFragment extends Fragment implements OnItemClickListener
 
         Account account = getAccountFromCursor(cursor);
         long folderId = cursor.getLong(FOLDER_ID_COLUMN);
-        Folder folder = getFolderById(account, folderId);
+        LocalFolder folder = getFolderById(account, folderId);
 
         try {
             return folder.getMessage(uid);
@@ -3178,14 +3172,14 @@ public class MessageListFragment extends Fragment implements OnItemClickListener
         return null;
     }
 
-    private List<Message> getCheckedMessages() {
-        List<Message> messages = new ArrayList<Message>(mSelected.size());
+    private List<LocalMessage> getCheckedMessages() {
+        List<LocalMessage> messages = new ArrayList<LocalMessage>(mSelected.size());
         for (int position = 0, end = mAdapter.getCount(); position < end; position++) {
             Cursor cursor = (Cursor) mAdapter.getItem(position);
             long uniqueId = cursor.getLong(mUniqueIdColumn);
 
             if (mSelected.contains(uniqueId)) {
-                Message message = getMessageAtPosition(position);
+                LocalMessage message = getMessageAtPosition(position);
                 if (message != null) {
                     messages.add(message);
                 }
@@ -3196,7 +3190,7 @@ public class MessageListFragment extends Fragment implements OnItemClickListener
     }
 
     public void onDelete() {
-        Message message = getSelectedMessage();
+        LocalMessage message = getSelectedMessage();
         if (message != null) {
             onDelete(Collections.singletonList(message));
         }
@@ -3226,21 +3220,21 @@ public class MessageListFragment extends Fragment implements OnItemClickListener
     }
 
     public void onMove() {
-        Message message = getSelectedMessage();
+        LocalMessage message = getSelectedMessage();
         if (message != null) {
             onMove(message);
         }
     }
 
     public void onArchive() {
-        Message message = getSelectedMessage();
+        LocalMessage message = getSelectedMessage();
         if (message != null) {
             onArchive(message);
         }
     }
 
     public void onCopy() {
-        Message message = getSelectedMessage();
+        LocalMessage message = getSelectedMessage();
         if (message != null) {
             onCopy(message);
         }
@@ -3449,11 +3443,11 @@ public class MessageListFragment extends Fragment implements OnItemClickListener
         if (mIsThreadDisplay) {
             if (cursor.moveToFirst()) {
                 mTitle = cursor.getString(SUBJECT_COLUMN);
-                if (!StringUtils.isNullOrEmpty(mTitle)) {
+                if (!TextUtils.isEmpty(mTitle)) {
                     mTitle = Utility.stripSubject(mTitle);
                 }
-                if (StringUtils.isNullOrEmpty(mTitle)) {
-                   mTitle = getString(R.string.general_no_subject);
+                if (TextUtils.isEmpty(mTitle)) {
+                    mTitle = getString(R.string.general_no_subject);
                 }
                 updateTitle();
             } else {

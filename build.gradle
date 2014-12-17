@@ -4,7 +4,7 @@ buildscript {
     }
 
     dependencies {
-        classpath 'com.android.tools.build:gradle:1.0.0-rc1'
+        classpath 'com.android.tools.build:gradle:1.0.0'
         classpath 'com.jakewharton.sdkmanager:gradle-plugin:0.12.0'
     }
 }
@@ -100,6 +100,18 @@ android {
         }
     }
 
+    signingConfigs {
+        release
+    }
+
+    buildTypes {
+        release {
+            if (project.hasProperty('storeFile')) {
+                signingConfig signingConfigs.release
+            }
+        }
+    }
+
     // Do not abort build if lint finds errors
     lintOptions {
         abortOnError false
@@ -124,10 +136,7 @@ task checkstyle(type: Checkstyle) {
     classpath = files()
 }
 
-task testsOnJVM(type: GradleBuild, dependsOn: assemble) {
-    buildFile = 'tests-on-jvm/build.gradle'
-    tasks = ['test']
-}
+task testOnJVM(dependsOn: 'tests-on-jvm:test')
 
 if (project.hasProperty('keyAlias')) {
     android.signingConfigs.release.keyAlias = keyAlias

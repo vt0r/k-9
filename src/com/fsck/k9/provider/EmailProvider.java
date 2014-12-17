@@ -8,14 +8,13 @@ import java.util.Map;
 import com.fsck.k9.Account;
 import com.fsck.k9.Preferences;
 import com.fsck.k9.cache.EmailProviderCacheCursor;
-import com.fsck.k9.helper.StringUtils;
 import com.fsck.k9.helper.Utility;
 import com.fsck.k9.mail.MessagingException;
-import com.fsck.k9.mail.store.LockableDatabase;
-import com.fsck.k9.mail.store.LockableDatabase.DbCallback;
-import com.fsck.k9.mail.store.LockableDatabase.WrappedException;
-import com.fsck.k9.mail.store.local.LocalStore;
-import com.fsck.k9.mail.store.UnavailableStorageException;
+import com.fsck.k9.mailstore.LockableDatabase;
+import com.fsck.k9.mailstore.LockableDatabase.DbCallback;
+import com.fsck.k9.mailstore.LockableDatabase.WrappedException;
+import com.fsck.k9.mailstore.UnavailableStorageException;
+import com.fsck.k9.mailstore.LocalStore;
 import com.fsck.k9.search.SqlQueryBuilder;
 
 import android.content.ContentProvider;
@@ -27,6 +26,7 @@ import android.database.Cursor;
 import android.database.CursorWrapper;
 import android.database.sqlite.SQLiteDatabase;
 import android.net.Uri;
+import android.text.TextUtils;
 
 /**
  * Content Provider used to display the message list etc.
@@ -303,7 +303,7 @@ public class EmailProvider extends ContentProvider {
                         UnavailableStorageException {
 
                     String where;
-                    if (StringUtils.isNullOrEmpty(selection)) {
+                    if (TextUtils.isEmpty(selection)) {
                         where = InternalMessageColumns.DELETED + "=0 AND (" +
                                 InternalMessageColumns.EMPTY + " IS NULL OR " +
                                 InternalMessageColumns.EMPTY + "!=1)";
@@ -357,6 +357,8 @@ public class EmailProvider extends ContentProvider {
             });
         } catch (UnavailableStorageException e) {
             throw new RuntimeException("Storage not available", e);
+        } catch (MessagingException e) {
+            throw new RuntimeException("messaging exception", e);
         }
     }
 
@@ -416,7 +418,7 @@ public class EmailProvider extends ContentProvider {
                     }
 
                     query.append("WHERE m." + MessageColumns.DATE + " = a." + MessageColumns.DATE);
-                    if (!StringUtils.isNullOrEmpty(sortOrder)) {
+                    if (!TextUtils.isEmpty(sortOrder)) {
                         query.append(" ORDER BY ");
                         query.append(SqlQueryBuilder.addPrefixToSelection(
                                 FIXUP_AGGREGATED_MESSAGES_COLUMNS, "a.", sortOrder));
@@ -427,6 +429,8 @@ public class EmailProvider extends ContentProvider {
             });
         } catch (UnavailableStorageException e) {
             throw new RuntimeException("Storage not available", e);
+        } catch (MessagingException e) {
+            throw new RuntimeException("messaging exception", e);
         }
     }
 
@@ -469,7 +473,7 @@ public class EmailProvider extends ContentProvider {
                 InternalMessageColumns.EMPTY + " != 1))");
 
 
-        if (!StringUtils.isNullOrEmpty(selection)) {
+        if (!TextUtils.isEmpty(selection)) {
             query.append(" AND (");
             query.append(selection);
             query.append(")");
@@ -532,7 +536,10 @@ public class EmailProvider extends ContentProvider {
             });
         } catch (UnavailableStorageException e) {
             throw new RuntimeException("Storage not available", e);
+        } catch (MessagingException e) {
+            throw new RuntimeException("messaging exception", e);
         }
+
     }
 
     private Cursor getAccountStats(String accountUuid, String[] columns,
@@ -570,13 +577,13 @@ public class EmailProvider extends ContentProvider {
         // Table selection
         sql.append(" FROM messages");
 
-        if (StringUtils.containsAny(selection, FOLDERS_COLUMNS)) {
+        if (containsAny(selection, FOLDERS_COLUMNS)) {
             sql.append(" JOIN folders ON (folders.id = messages.folder_id)");
         }
 
         // WHERE clause
         sql.append(" WHERE (deleted=0 AND (empty IS NULL OR empty!=1))");
-        if (!StringUtils.isNullOrEmpty(selection)) {
+        if (!TextUtils.isEmpty(selection)) {
             sql.append(" AND (");
             sql.append(selection);
             sql.append(")");
@@ -594,7 +601,10 @@ public class EmailProvider extends ContentProvider {
             });
         }  catch (UnavailableStorageException e) {
             throw new RuntimeException("Storage not available", e);
+        } catch (MessagingException e) {
+            throw new RuntimeException("messaging exception", e);
         }
+
     }
 
     private Account getAccount(String accountUuid) {
@@ -815,5 +825,19 @@ public class EmailProvider extends ContentProvider {
 
             return super.isNull(realColumnIndex);
         }
+    }
+
+    private static boolean containsAny(String haystack, String[] needles) {
+        if (haystack == null) {
+            return false;
+        }
+
+        for (String needle : needles) {
+            if (haystack.contains(needle)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

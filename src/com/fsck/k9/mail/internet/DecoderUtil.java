@@ -2,7 +2,6 @@
 package com.fsck.k9.mail.internet;
 
 import android.util.Log;
-import com.fsck.k9.K9;
 import com.fsck.k9.mail.Message;
 import com.fsck.k9.mail.MessagingException;
 import java.io.ByteArrayInputStream;
@@ -13,6 +12,8 @@ import org.apache.james.mime4j.codec.Base64InputStream;
 import org.apache.james.mime4j.codec.QuotedPrintableInputStream;
 import org.apache.james.mime4j.util.CharsetUtil;
 
+import static com.fsck.k9.mail.K9MailLib.LOG_TAG;
+
 
 /**
  * Static methods for decoding strings, byte arrays and encoded words.
@@ -21,7 +22,7 @@ import org.apache.james.mime4j.util.CharsetUtil;
  * decode emoji characters in the Subject headers.  The method to decode emoji depends on the MimeMessage class because
  * it has to be determined with the sender address, the mailer and so on.
  */
-public class DecoderUtil {
+class DecoderUtil {
     /**
      * Decodes an encoded word encoded with the 'B' encoding (described in
      * RFC 2047) found in a header field body.
@@ -35,7 +36,7 @@ public class DecoderUtil {
 
         Base64InputStream is = new Base64InputStream(new ByteArrayInputStream(bytes));
         try {
-            return MimeUtility.readToString(is, charset);
+            return CharsetSupport.readToString(is, charset);
         } catch (IOException e) {
             return null;
         }
@@ -68,7 +69,7 @@ public class DecoderUtil {
 
         QuotedPrintableInputStream is = new QuotedPrintableInputStream(new ByteArrayInputStream(bytes));
         try {
-            return MimeUtility.readToString(is, charset);
+            return CharsetSupport.readToString(is, charset);
         } catch (IOException e) {
             return null;
         }
@@ -162,13 +163,13 @@ public class DecoderUtil {
 
         String charset;
         try {
-            charset = MimeUtility.fixupCharset(mimeCharset, message);
+            charset = CharsetSupport.fixupCharset(mimeCharset, message);
         } catch (MessagingException e) {
             return null;
         }
 
         if (encodedText.isEmpty()) {
-            Log.w(K9.LOG_TAG, "Missing encoded text in encoded word: '" + body.substring(begin, end) + "'");
+            Log.w(LOG_TAG, "Missing encoded text in encoded word: '" + body.substring(begin, end) + "'");
             return null;
         }
 
@@ -177,7 +178,7 @@ public class DecoderUtil {
         } else if (encoding.equalsIgnoreCase("B")) {
             return DecoderUtil.decodeB(encodedText, charset);
         } else {
-            Log.w(K9.LOG_TAG, "Warning: Unknown encoding in encoded word '" + body.substring(begin, end) + "'");
+            Log.w(LOG_TAG, "Warning: Unknown encoding in encoded word '" + body.substring(begin, end) + "'");
             return null;
         }
     }
