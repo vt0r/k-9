@@ -1,4 +1,4 @@
-package com.fsck.k9.mail.store;
+package com.fsck.k9.mail.store.webdav;
 
 import android.util.Log;
 
@@ -8,6 +8,8 @@ import com.fsck.k9.mail.filter.EOLConvertingOutputStream;
 import com.fsck.k9.mail.internet.MimeMessage;
 import com.fsck.k9.mail.MessageRetrievalListener;
 import com.fsck.k9.mail.CertificateValidationException;
+import com.fsck.k9.mail.store.RemoteStore;
+import com.fsck.k9.mail.store.StoreConfig;
 
 import org.apache.commons.io.IOUtils;
 import org.apache.http.*;
@@ -183,7 +185,7 @@ public class WebDavStore extends RemoteStore {
      *
      * @return A WebDavStore URI that holds the same information as the {@code server} parameter.
      *
-     * @see Account#getStoreUri()
+     * @see StoreConfig#getStoreUri()
      * @see WebDavStore#decodeUri(String)
      */
     public static String createUri(ServerSettings server) {
@@ -372,10 +374,9 @@ public class WebDavStore extends RemoteStore {
          *  and setup the account accordingly
          */
         Map<String, String> headers = new HashMap<String, String>();
-        DataSet dataset = new DataSet();
         headers.put("Depth", "0");
         headers.put("Brief", "t");
-        dataset = processRequest(this.mUrl, "PROPFIND", getSpecialFoldersList(), headers);
+        DataSet dataset = processRequest(this.mUrl, "PROPFIND", getSpecialFoldersList(), headers);
 
         Map<String, String> specialFoldersMap = dataset.getSpecialFolderToUrl();
         String folderName = getFolderName(specialFoldersMap.get(DAV_MAIL_INBOX_FOLDER));
@@ -411,7 +412,6 @@ public class WebDavStore extends RemoteStore {
          * Next we get all the folders (including "special" ones)
          */
         headers = new HashMap<String, String>();
-        dataset = new DataSet();
         headers.put("Brief", "t");
         dataset = processRequest(this.mUrl, "SEARCH", getFolderListXml(), headers);
         String[] folderUrls = dataset.getHrefs();
@@ -510,50 +510,50 @@ public class WebDavStore extends RemoteStore {
     }
 
     private String getSpecialFoldersList() {
-        StringBuilder buffer = new StringBuilder(200);
-        buffer.append("<?xml version=\"1.0\" encoding=\"utf-8\" standalone=\"no\"?>");
-        buffer.append("<propfind xmlns=\"DAV:\">");
-        buffer.append("<prop>");
-        buffer.append("<").append(DAV_MAIL_INBOX_FOLDER).append(" xmlns=\"urn:schemas:httpmail:\"/>");
-        buffer.append("<").append(DAV_MAIL_DRAFTS_FOLDER).append(" xmlns=\"urn:schemas:httpmail:\"/>");
-        buffer.append("<").append(DAV_MAIL_OUTBOX_FOLDER).append(" xmlns=\"urn:schemas:httpmail:\"/>");
-        buffer.append("<").append(DAV_MAIL_SENT_FOLDER).append(" xmlns=\"urn:schemas:httpmail:\"/>");
-        buffer.append("<").append(DAV_MAIL_TRASH_FOLDER).append(" xmlns=\"urn:schemas:httpmail:\"/>");
+        StringBuilder builder = new StringBuilder(200);
+        builder.append("<?xml version=\"1.0\" encoding=\"utf-8\" standalone=\"no\"?>");
+        builder.append("<propfind xmlns=\"DAV:\">");
+        builder.append("<prop>");
+        builder.append("<").append(DAV_MAIL_INBOX_FOLDER).append(" xmlns=\"urn:schemas:httpmail:\"/>");
+        builder.append("<").append(DAV_MAIL_DRAFTS_FOLDER).append(" xmlns=\"urn:schemas:httpmail:\"/>");
+        builder.append("<").append(DAV_MAIL_OUTBOX_FOLDER).append(" xmlns=\"urn:schemas:httpmail:\"/>");
+        builder.append("<").append(DAV_MAIL_SENT_FOLDER).append(" xmlns=\"urn:schemas:httpmail:\"/>");
+        builder.append("<").append(DAV_MAIL_TRASH_FOLDER).append(" xmlns=\"urn:schemas:httpmail:\"/>");
         // This should always be ##DavMailSubmissionURI## for which we already have a constant
         // buffer.append("<sendmsg xmlns=\"urn:schemas:httpmail:\"/>");
 
-        buffer.append("<").append(DAV_MAIL_SPAM_FOLDER).append(" xmlns=\"urn:schemas:httpmail:\"/>");
+        builder.append("<").append(DAV_MAIL_SPAM_FOLDER).append(" xmlns=\"urn:schemas:httpmail:\"/>");
 
-        buffer.append("</prop>");
-        buffer.append("</propfind>");
-        return buffer.toString();
+        builder.append("</prop>");
+        builder.append("</propfind>");
+        return builder.toString();
     }
 
     /***************************************************************
      * WebDAV XML Request body retrieval functions
      */
     private String getFolderListXml() {
-        StringBuilder buffer = new StringBuilder(200);
-        buffer.append("<?xml version='1.0' ?>");
-        buffer.append("<a:searchrequest xmlns:a='DAV:'><a:sql>\r\n");
-        buffer.append("SELECT \"DAV:uid\", \"DAV:ishidden\"\r\n");
-        buffer.append(" FROM SCOPE('hierarchical traversal of \"").append(this.mUrl).append("\"')\r\n");
-        buffer.append(" WHERE \"DAV:ishidden\"=False AND \"DAV:isfolder\"=True\r\n");
-        buffer.append("</a:sql></a:searchrequest>\r\n");
-        return buffer.toString();
+        StringBuilder builder = new StringBuilder(200);
+        builder.append("<?xml version='1.0' ?>");
+        builder.append("<a:searchrequest xmlns:a='DAV:'><a:sql>\r\n");
+        builder.append("SELECT \"DAV:uid\", \"DAV:ishidden\"\r\n");
+        builder.append(" FROM SCOPE('hierarchical traversal of \"").append(this.mUrl).append("\"')\r\n");
+        builder.append(" WHERE \"DAV:ishidden\"=False AND \"DAV:isfolder\"=True\r\n");
+        builder.append("</a:sql></a:searchrequest>\r\n");
+        return builder.toString();
     }
 
     private String getMessageCountXml(String messageState) {
-        StringBuilder buffer = new StringBuilder(200);
-        buffer.append("<?xml version='1.0' ?>");
-        buffer.append("<a:searchrequest xmlns:a='DAV:'><a:sql>\r\n");
-        buffer.append("SELECT \"DAV:visiblecount\"\r\n");
-        buffer.append(" FROM \"\"\r\n");
-        buffer.append(" WHERE \"DAV:ishidden\"=False AND \"DAV:isfolder\"=False AND \"urn:schemas:httpmail:read\"=")
+        StringBuilder builder = new StringBuilder(200);
+        builder.append("<?xml version='1.0' ?>");
+        builder.append("<a:searchrequest xmlns:a='DAV:'><a:sql>\r\n");
+        builder.append("SELECT \"DAV:visiblecount\"\r\n");
+        builder.append(" FROM \"\"\r\n");
+        builder.append(" WHERE \"DAV:ishidden\"=False AND \"DAV:isfolder\"=False AND \"urn:schemas:httpmail:read\"=")
         .append(messageState).append("\r\n");
-        buffer.append(" GROUP BY \"DAV:ishidden\"\r\n");
-        buffer.append("</a:sql></a:searchrequest>\r\n");
-        return buffer.toString();
+        builder.append(" GROUP BY \"DAV:ishidden\"\r\n");
+        builder.append("</a:sql></a:searchrequest>\r\n");
+        return builder.toString();
     }
 
     private String getMessageEnvelopeXml(String[] uids) {
@@ -587,14 +587,14 @@ public class WebDavStore extends RemoteStore {
     }
 
     private String getMessagesXml() {
-        StringBuilder buffer = new StringBuilder(200);
-        buffer.append("<?xml version='1.0' ?>");
-        buffer.append("<a:searchrequest xmlns:a='DAV:'><a:sql>\r\n");
-        buffer.append("SELECT \"DAV:uid\"\r\n");
-        buffer.append(" FROM \"\"\r\n");
-        buffer.append(" WHERE \"DAV:ishidden\"=False AND \"DAV:isfolder\"=False\r\n");
-        buffer.append("</a:sql></a:searchrequest>\r\n");
-        return buffer.toString();
+        StringBuilder builder = new StringBuilder(200);
+        builder.append("<?xml version='1.0' ?>");
+        builder.append("<a:searchrequest xmlns:a='DAV:'><a:sql>\r\n");
+        builder.append("SELECT \"DAV:uid\"\r\n");
+        builder.append(" FROM \"\"\r\n");
+        builder.append(" WHERE \"DAV:ishidden\"=False AND \"DAV:isfolder\"=False\r\n");
+        builder.append("</a:sql></a:searchrequest>\r\n");
+        return builder.toString();
     }
 
     private String getMessageUrlsXml(String[] uids) {
@@ -924,7 +924,7 @@ public class WebDavStore extends RemoteStore {
         // Read line by line until we find something like: <form action="owaauth.dll"...>.
         while ((tempText = reader.readLine()) != null &&
                 formAction == null) {
-            if (tempText.indexOf(" action=") > -1) {
+            if (tempText.contains(" action=")) {
                 String[] actionParts = tempText.split(" action=");
                 if (actionParts.length > 1 && actionParts[1].length() > 1) {
                     char openQuote = actionParts[1].charAt(0);
@@ -1037,27 +1037,25 @@ public class WebDavStore extends RemoteStore {
     private InputStream sendRequest(String url, String method, StringEntity messageBody,
                                     Map<String, String> headers, boolean tryAuth)
     throws MessagingException {
-        InputStream istream = null;
-
         if (url == null || method == null) {
-            return istream;
+            return null;
         }
 
-        WebDavHttpClient httpclient = getHttpClient();
+        WebDavHttpClient httpClient = getHttpClient();
 
         try {
-            int statusCode = -1;
-            HttpGeneric httpmethod = new HttpGeneric(url);
+            int statusCode;
+            HttpGeneric httpMethod = new HttpGeneric(url);
             HttpResponse response;
             HttpEntity entity;
 
             if (messageBody != null) {
-                httpmethod.setEntity(messageBody);
+                httpMethod.setEntity(messageBody);
             }
 
             if (headers != null) {
                 for (Map.Entry<String, String> entry : headers.entrySet()) {
-                    httpmethod.setHeader(entry.getKey(), entry.getValue());
+                    httpMethod.setHeader(entry.getKey(), entry.getValue());
                 }
             }
 
@@ -1066,11 +1064,11 @@ public class WebDavStore extends RemoteStore {
                     throw new MessagingException("Unable to authenticate in sendRequest().");
                 }
             } else if (mAuthentication == AUTH_TYPE_BASIC) {
-                httpmethod.setHeader("Authorization", mAuthString);
+                httpMethod.setHeader("Authorization", mAuthString);
             }
 
-            httpmethod.setMethod(method);
-            response = httpclient.executeOverride(httpmethod, mContext);
+            httpMethod.setMethod(method);
+            response = httpClient.executeOverride(httpMethod, mContext);
             statusCode = response.getStatusLine().getStatusCode();
 
             entity = response.getEntity();
@@ -1091,7 +1089,7 @@ public class WebDavStore extends RemoteStore {
             }
 
             if (entity != null) {
-                istream = WebDavHttpClient.getUngzippedContent(entity);
+                return WebDavHttpClient.getUngzippedContent(entity);
             }
         } catch (UnsupportedEncodingException uee) {
             Log.e(LOG_TAG, "UnsupportedEncodingException: " + uee + "\nTrace: " + processException(uee));
@@ -1101,7 +1099,7 @@ public class WebDavStore extends RemoteStore {
             throw new MessagingException("IOException", ioe);
         }
 
-        return istream;
+        return null;
     }
 
     public String getAuthString() {
@@ -1233,7 +1231,7 @@ public class WebDavStore extends RemoteStore {
             store = nStore;
             this.mName = name;
 
-            String encodedName = "";
+            String encodedName;
             String[] urlParts = name.split("/");
             String url = "";
             for (int i = 0, count = urlParts.length; i < count; i++) {
@@ -1291,7 +1289,7 @@ public class WebDavStore extends RemoteStore {
             for (int i = 0, count = messages.size(); i < count; i++) {
                 uids[i] = messages.get(i).getUid();
             }
-            String messageBody = "";
+            String messageBody;
             Map<String, String> headers = new HashMap<String, String>();
             Map<String, String> uidToUrl = getMessageUrls(uids);
             String[] urls = new String[uids.length];
@@ -1402,12 +1400,12 @@ public class WebDavStore extends RemoteStore {
         }
 
         @Override
-        public List<? extends Message> getMessages(int start, int end, Date earliestDate, MessageRetrievalListener listener)
+        public List<WebDavMessage> getMessages(int start, int end, Date earliestDate, MessageRetrievalListener<WebDavMessage> listener)
         throws MessagingException {
-            List<Message> messages = new ArrayList<Message>();
+            List<WebDavMessage> messages = new ArrayList<WebDavMessage>();
             String[] uids;
             Map<String, String> headers = new HashMap<String, String>();
-            int uidsLength = -1;
+            int uidsLength;
 
             String messageBody;
             int prevStart = start;
@@ -1452,14 +1450,13 @@ public class WebDavStore extends RemoteStore {
         }
 
         @Override
-        public List<? extends Message> getMessages(MessageRetrievalListener listener) throws MessagingException {
+        public List<WebDavMessage> getMessages(MessageRetrievalListener<WebDavMessage> listener) throws MessagingException {
             return getMessages(null, listener);
         }
 
         @Override
-        public List<? extends Message> getMessages(String[] uids, MessageRetrievalListener listener) throws MessagingException {
-            List<Message> messageList = new ArrayList<Message>();
-            List<? extends Message> messages;
+        public List<WebDavMessage> getMessages(String[] uids, MessageRetrievalListener<WebDavMessage> listener) throws MessagingException {
+            List<WebDavMessage> messageList = new ArrayList<WebDavMessage>();
 
             if (uids == null ||
                     uids.length == 0) {
@@ -1478,9 +1475,7 @@ public class WebDavStore extends RemoteStore {
                     listener.messageFinished(message, i, count);
                 }
             }
-            messages = messageList;
-
-            return messages;
+            return messageList;
         }
 
         private Map<String, String> getMessageUrls(String[] uids) throws MessagingException {
@@ -1492,13 +1487,12 @@ public class WebDavStore extends RemoteStore {
             headers.put("Brief", "t");
 
             DataSet dataset = processRequest(this.mFolderUrl, "SEARCH", messageBody, headers);
-            Map<String, String> uidToUrl = dataset.getUidToUrl();
 
-            return uidToUrl;
+            return dataset.getUidToUrl();
         }
 
         @Override
-        public void fetch(List<? extends Message> messages, FetchProfile fp, MessageRetrievalListener<WebDavMessage> listener)
+        public void fetch(List<WebDavMessage> messages, FetchProfile fp, MessageRetrievalListener<WebDavMessage> listener)
         throws MessagingException {
             if (messages == null ||
                     messages.isEmpty()) {
@@ -1647,9 +1641,9 @@ public class WebDavStore extends RemoteStore {
          * Fetches and sets the message flags for the supplied messages. The idea is to have this be recursive so that
          * we do a series of medium calls instead of one large massive call or a large number of smaller calls.
          */
-        private void fetchFlags(List<? extends Message> startMessages, MessageRetrievalListener listener) throws MessagingException {
+        private void fetchFlags(List<WebDavMessage> startMessages, MessageRetrievalListener<WebDavMessage> listener) throws MessagingException {
             HashMap<String, String> headers = new HashMap<String, String>();
-            String messageBody = "";
+            String messageBody;
             List<Message> messages = new ArrayList<Message>(20);
             String[] uids;
 
@@ -1659,7 +1653,7 @@ public class WebDavStore extends RemoteStore {
             }
 
             if (startMessages.size() > 20) {
-                List<Message> newMessages = new ArrayList<Message>(startMessages.size() - 20);
+                List<WebDavMessage> newMessages = new ArrayList<WebDavMessage>(startMessages.size() - 20);
                 for (int i = 0, count = startMessages.size(); i < count; i++) {
                     if (i < 20) {
                         messages.set(i,  startMessages.get(i));
@@ -1716,12 +1710,12 @@ public class WebDavStore extends RemoteStore {
          * that we do a series of medium calls instead of one large massive call or a large number of smaller calls.
          * Call it a happy balance
          */
-        private void fetchEnvelope(List<? extends Message> startMessages, MessageRetrievalListener listener)
+        private void fetchEnvelope(List<WebDavMessage> startMessages, MessageRetrievalListener<WebDavMessage> listener)
         throws MessagingException {
             Map<String, String> headers = new HashMap<String, String>();
-            String messageBody = "";
+            String messageBody;
             String[] uids;
-            List<Message> messages = new ArrayList<Message>(10);
+            List<WebDavMessage> messages = new ArrayList<WebDavMessage>(10);
 
             if (startMessages == null ||
                     startMessages.isEmpty()) {
@@ -1729,7 +1723,7 @@ public class WebDavStore extends RemoteStore {
             }
 
             if (startMessages.size() > 10) {
-                List<Message> newMessages =  new ArrayList<Message>(startMessages.size() - 10);
+                List<WebDavMessage> newMessages =  new ArrayList<WebDavMessage>(startMessages.size() - 10);
                 for (int i = 0, count = startMessages.size(); i < count; i++) {
                     if (i < 10) {
                         messages.set(i, startMessages.get(i));
@@ -1757,21 +1751,17 @@ public class WebDavStore extends RemoteStore {
 
             int count = messages.size();
             for (int i = messages.size() - 1; i >= 0; i--) {
-                if (!(messages.get(i) instanceof WebDavMessage)) {
-                    throw new MessagingException("WebDavStore fetch called with non-WebDavMessage");
-                }
-                WebDavMessage wdMessage = (WebDavMessage) messages.get(i);
-
+                WebDavMessage message = messages.get(i);
                 if (listener != null) {
                     listener.messageStarted(messages.get(i).getUid(), i, count);
                 }
 
-                ParsedMessageEnvelope envelope = envelopes.get(wdMessage.getUid());
+                ParsedMessageEnvelope envelope = envelopes.get(message.getUid());
                 if (envelope != null) {
-                    wdMessage.setNewHeaders(envelope);
-                    wdMessage.setFlagInternal(Flag.SEEN, envelope.getReadStatus());
+                    message.setNewHeaders(envelope);
+                    message.setFlagInternal(Flag.SEEN, envelope.getReadStatus());
                 } else {
-                    Log.e(LOG_TAG,"Asked to get metadata for a non-existent message: "+wdMessage.getUid());
+                    Log.e(LOG_TAG, "Asked to get metadata for a non-existent message: " + message.getUid());
                 }
 
                 if (listener != null) {
@@ -1799,7 +1789,7 @@ public class WebDavStore extends RemoteStore {
         }
 
         private void markServerMessagesRead(String[] uids, boolean read) throws MessagingException {
-            String messageBody = "";
+            String messageBody;
             Map<String, String> headers = new HashMap<String, String>();
             Map<String, String> uidToUrl = getMessageUrls(uids);
             String[] urls = new String[uids.length];
@@ -1840,9 +1830,8 @@ public class WebDavStore extends RemoteStore {
         private String generateDeleteUrl(String startUrl) {
             String[] urlParts = startUrl.split("/");
             String filename = urlParts[urlParts.length - 1];
-            String finalUrl = WebDavStore.this.mUrl + "Deleted%20Items/" + filename;
 
-            return finalUrl;
+            return WebDavStore.this.mUrl + "Deleted%20Items/" + filename;
         }
 
         @Override
@@ -2167,7 +2156,7 @@ public class WebDavStore extends RemoteStore {
 
         public void finish() {
             String uid = mUid.toString();
-            if (uid != null && mTempData != null) {
+            if (mTempData != null) {
                 mData.put(uid, mTempData);
             } else if (mTempData != null) {
                 /*
@@ -2433,7 +2422,7 @@ public class WebDavStore extends RemoteStore {
         throws IOException {
             InputStream responseStream = entity.getContent();
             if (responseStream == null)
-                return responseStream;
+                return null;
             Header header = entity.getContentEncoding();
             if (header == null)
                 return responseStream;

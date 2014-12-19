@@ -138,11 +138,11 @@ public abstract class Folder<T extends Message> {
      * @param listener Listener to notify as we fetch messages.
      * @throws MessagingException
      */
-    public abstract void fetch(List<? extends Message> messages, FetchProfile fp,
+    public abstract void fetch(List<T> messages, FetchProfile fp,
                                MessageRetrievalListener<T> listener) throws MessagingException;
 
     public void fetchPart(Message message, Part part,
-                          MessageRetrievalListener<T> listener) throws MessagingException {
+                          MessageRetrievalListener<Message> listener) throws MessagingException {
         // This is causing trouble. Disabled for now. See issue 1733
         //throw new RuntimeException("fetchPart() not implemented.");
 
@@ -162,7 +162,6 @@ public abstract class Folder<T extends Message> {
     protected boolean mCanCreateKeywords = false;
 
     /**
-     * 
      * @param oldPushState
      * @param message
      * @return empty string to clear the pushState, null to leave the state as-is
@@ -227,7 +226,7 @@ public abstract class Folder<T extends Message> {
         this.status = status;
     }
 
-    public List<Message> search(String queryString, final Set<Flag> requiredFlags, final Set<Flag> forbiddenFlags)
+    public List<T> search(String queryString, final Set<Flag> requiredFlags, final Set<Flag> forbiddenFlags)
         throws MessagingException {
         throw new MessagingException("K-9 does not support searches on this folder type");
     }

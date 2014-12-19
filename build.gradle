@@ -12,6 +12,7 @@ buildscript {
 apply plugin: 'android-sdk-manager'
 apply plugin: 'com.android.application'
 apply plugin: 'checkstyle'
+apply plugin: 'findbugs'
 
 repositories {
     jcenter()
@@ -33,6 +34,7 @@ dependencies {
 }
 
 project.ext.preDexLibs = !project.hasProperty('disablePreDex')
+project.ext.testCoverage = project.hasProperty('testCoverage')
 
 subprojects {
     project.plugins.whenPluginAdded { plugin ->
@@ -45,7 +47,7 @@ subprojects {
 
 android {
     compileSdkVersion 21
-    buildToolsVersion '20.0.0'
+    buildToolsVersion '21.1.2'
 
     defaultConfig {
         minSdkVersion 15
@@ -110,6 +112,10 @@ android {
                 signingConfig signingConfigs.release
             }
         }
+
+        debug {
+            testCoverageEnabled rootProject.testCoverage
+        }
     }
 
     // Do not abort build if lint finds errors
@@ -124,6 +130,10 @@ android {
         exclude 'META-INF/NOTICE'
         exclude 'META-INF/NOTICE.txt'
     }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_6
+        targetCompatibility JavaVersion.VERSION_1_6
+    }
 }
 
 check.dependsOn 'checkstyle'
@@ -131,12 +141,24 @@ task checkstyle(type: Checkstyle) {
     ignoreFailures = true
     configFile file("config/checkstyle/checkstyle.xml")
 
-    source 'src'
+    source = project.android.sourceSets.main.java.getSrcDirs() +
+            project.android.sourceSets.androidTest.java.getSrcDirs()
     include '**/*.java'
     classpath = files()
 }
 
-task testOnJVM(dependsOn: 'tests-on-jvm:test')
+check.dependsOn 'findbugs'
+task findbugs(type: FindBugs, dependsOn: [':compileDebugJava', ':compileDebugTestJava']) {
+    ignoreFailures = true
+    classes = fileTree('build/intermediates/classes/debug/') +
+            fileTree('build/intermediates/classes/test/debug/')
+    source = project.android.sourceSets.main.java.getSrcDirs() +
+            project.android.sourceSets.androidTest.java.getSrcDirs()
+    classpath = files()
+    effort = 'max'
+    includeFilter = file("$rootProject.projectDir/config/findbugs/include_filter.xml")
+    excludeFilter = file("$rootProject.projectDir/config/findbugs/exclude_filter.xml")
+}
 
 if (project.hasProperty('keyAlias')) {
     android.signingConfigs.release.keyAlias = keyAlias

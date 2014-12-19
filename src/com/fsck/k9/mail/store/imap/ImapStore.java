@@ -1,5 +1,5 @@
 
-package com.fsck.k9.mail.store;
+package com.fsck.k9.mail.store.imap;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -61,8 +61,8 @@ import com.fsck.k9.mail.internet.MimeMessage;
 import com.fsck.k9.mail.internet.MimeMultipart;
 import com.fsck.k9.mail.internet.MimeUtility;
 import com.fsck.k9.mail.ssl.TrustedSocketFactory;
-import com.fsck.k9.mail.store.ImapResponseParser.ImapList;
-import com.fsck.k9.mail.store.ImapResponseParser.ImapResponse;
+import com.fsck.k9.mail.store.RemoteStore;
+import com.fsck.k9.mail.store.StoreConfig;
 import com.fsck.k9.mail.transport.imap.ImapSettings;
 
 import com.beetstra.jutf7.CharsetProvider;
@@ -81,14 +81,24 @@ public class ImapStore extends RemoteStore {
 
     private static final int IDLE_READ_TIMEOUT_INCREMENT = 5 * 60 * 1000;
     private static final int IDLE_FAILURE_COUNT_LIMIT = 10;
-    private static int MAX_DELAY_TIME = 5 * 60 * 1000; // 5 minutes
-    private static int NORMAL_DELAY_TIME = 5000;
+    private static final int MAX_DELAY_TIME = 5 * 60 * 1000; // 5 minutes
+    private static final int NORMAL_DELAY_TIME = 5000;
+    private static final String[] EMPTY_STRING_ARRAY = new String[0];
 
     private static final int FETCH_WINDOW_SIZE = 100;
-
     private Set<Flag> mPermanentFlagsIndex = EnumSet.noneOf(Flag.class);
-    private static final String[] EMPTY_STRING_ARRAY = new String[0];
     private ConnectivityManager mConnectivityManager;
+
+    private String mHost;
+    private int mPort;
+    private String mUsername;
+    private String mPassword;
+    private String mClientCertificateAlias;
+    private ConnectionSecurity mConnectionSecurity;
+    private AuthType mAuthType;
+    private String mPathPrefix;
+    private String mCombinedPrefix = null;
+    private String mPathDelimiter = null;
 
     /**
      * Decodes an ImapStore URI.
@@ -293,91 +303,7 @@ public class ImapStore extends RemoteStore {
     }
 
 
-    private String mHost;
-    private int mPort;
-    private String mUsername;
-    private String mPassword;
-    private String mClientCertificateAlias;
-    private ConnectionSecurity mConnectionSecurity;
-    private AuthType mAuthType;
-    private volatile String mPathPrefix;
-    private volatile String mCombinedPrefix = null;
-    private volatile String mPathDelimeter = null;
-
-    public class StoreImapSettings implements ImapSettings {
-
-        @Override
-        public String getHost() {
-            return mHost;
-        }
-
-        @Override
-        public int getPort() {
-            return mPort;
-        }
-
-        @Override
-        public ConnectionSecurity getConnectionSecurity() {
-            return mConnectionSecurity;
-        }
-
-        @Override
-        public AuthType getAuthType() {
-            return mAuthType;
-        }
-
-        @Override
-        public String getUsername() {
-            return mUsername;
-        }
-
-        @Override
-        public String getPassword() {
-            return mPassword;
-        }
-
-        @Override
-        public String getClientCertificateAlias() {
-            return mClientCertificateAlias;
-        }
-
-        @Override
-        public boolean useCompression(final int type) {
-            return mStoreConfig.useCompression(type);
-        }
-
-        @Override
-        public String getPathPrefix() {
-            return mPathPrefix;
-        }
-
-        @Override
-        public void setPathPrefix(String prefix) {
-            mPathPrefix = prefix;
-        }
-
-        @Override
-        public String getPathDelimeter() {
-            return mPathDelimeter;
-        }
-
-        @Override
-        public void setPathDelimeter(String delimeter) {
-            mPathDelimeter = delimeter;
-        }
-
-        @Override
-        public String getCombinedPrefix() {
-            return mCombinedPrefix;
-        }
-
-        @Override
-        public void setCombinedPrefix(String prefix) {
-            mCombinedPrefix = prefix;
-        }
-    }
-
-    private static final SimpleDateFormat RFC3501_DATE = new SimpleDateFormat("dd-MMM-yyyy", Locale.US);
+    protected static final SimpleDateFormat RFC3501_DATE = new SimpleDateFormat("dd-MMM-yyyy", Locale.US);
 
     private final Deque<ImapConnection> mConnections =
         new LinkedList<ImapConnection>();
@@ -442,7 +368,7 @@ public class ImapStore extends RemoteStore {
         if (mCombinedPrefix == null) {
             if (mPathPrefix != null) {
                 String tmpPrefix = mPathPrefix.trim();
-                String tmpDelim = (mPathDelimeter != null ? mPathDelimeter.trim() : "");
+                String tmpDelim = (mPathDelimiter != null ? mPathDelimiter.trim() : "");
                 if (tmpPrefix.endsWith(tmpDelim)) {
                     mCombinedPrefix = tmpPrefix;
                 } else if (tmpPrefix.length() > 0) {
@@ -525,8 +451,8 @@ public class ImapStore extends RemoteStore {
 
                 String folder = decodedFolderName;
 
-                if (mPathDelimeter == null) {
-                    mPathDelimeter = response.getString(2);
+                if (mPathDelimiter == null) {
+                    mPathDelimiter = response.getString(2);
                     mCombinedPrefix = null;
                 }
 
@@ -580,7 +506,7 @@ public class ImapStore extends RemoteStore {
      * @throws MessagingException uh oh!
      */
     private void autoconfigureFolders(final ImapConnection connection) throws IOException, MessagingException {
-        String commandResponse = null;
+        String commandResponse;
         String commandOptions = "";
 
         if (connection.getCapabilities().contains("XLIST")) {
@@ -612,8 +538,8 @@ public class ImapStore extends RemoteStore {
                     continue;
                 }
 
-                if (mPathDelimeter == null) {
-                    mPathDelimeter = response.getString(2);
+                if (mPathDelimiter == null) {
+                    mPathDelimiter = response.getString(2);
                     mCombinedPrefix = null;
                 }
 
@@ -655,10 +581,6 @@ public class ImapStore extends RemoteStore {
         }
     }
 
-    /**
-     * Gets a connection if one is available for reuse, or creates a new one if not.
-     * @return
-     */
     private ImapConnection getConnection() throws MessagingException {
         synchronized (mConnections) {
             ImapConnection connection;
@@ -743,7 +665,7 @@ public class ImapStore extends RemoteStore {
     }
 
 
-    class ImapFolder extends Folder<ImapMessage> {
+    protected class ImapFolder extends Folder<ImapMessage> {
         private String mName;
         protected volatile int mMessageCount = -1;
         protected volatile long uidNext = -1L;
@@ -763,7 +685,7 @@ public class ImapStore extends RemoteStore {
         public String getPrefixedName() throws MessagingException {
             String prefixedName = "";
             if (!mStoreConfig.getInboxFolderName().equalsIgnoreCase(mName)) {
-                ImapConnection connection = null;
+                ImapConnection connection;
                 synchronized (this) {
                     if (mConnection == null) {
                         connection = getConnection();
@@ -811,10 +733,9 @@ public class ImapStore extends RemoteStore {
                 // Make sure the connection is valid. If it's not we'll close it down and continue
                 // on to get a new one.
                 try {
-                    List<ImapResponse> responses = executeSimpleCommand("NOOP");
-                    return responses;
+                    return executeSimpleCommand("NOOP");
                 } catch (IOException ioe) {
-                    ioExceptionHandler(mConnection, ioe);
+                    /* don't throw */ ioExceptionHandler(mConnection, ioe);
                 }
             }
             releaseConnection(mConnection);
@@ -863,7 +784,7 @@ public class ImapStore extends RemoteStore {
                             Object keyObj = bracketed.get(0);
                             if (keyObj instanceof String) {
                                 String key = (String) keyObj;
-                                if (response.mTag != null) {
+                                if (response.getTag() != null) {
 
                                     if ("READ-ONLY".equalsIgnoreCase(key)) {
                                         mMode = OPEN_MODE_RO;
@@ -983,7 +904,7 @@ public class ImapStore extends RemoteStore {
              * so we must get the connection ourselves if it's not there. We are specifically
              * not calling checkOpen() since we don't care if the folder is open.
              */
-            ImapConnection connection = null;
+            ImapConnection connection;
             synchronized (this) {
                 if (mConnection == null) {
                     connection = getConnection();
@@ -1015,7 +936,7 @@ public class ImapStore extends RemoteStore {
              * so we must get the connection ourselves if it's not there. We are specifically
              * not calling checkOpen() since we don't care if the folder is open.
              */
-            ImapConnection connection = null;
+            ImapConnection connection;
             synchronized (this) {
                 if (mConnection == null) {
                     connection = getConnection();
@@ -1265,12 +1186,12 @@ public class ImapStore extends RemoteStore {
 
 
         @Override
-        public List<? extends Message> getMessages(int start, int end, Date earliestDate, MessageRetrievalListener listener)
+        public List<ImapMessage> getMessages(int start, int end, Date earliestDate, MessageRetrievalListener<ImapMessage> listener)
         throws MessagingException {
             return getMessages(start, end, earliestDate, false, listener);
         }
 
-        protected List<? extends Message> getMessages(final int start, final int end, Date earliestDate, final boolean includeDeleted, final MessageRetrievalListener listener)
+        protected List<ImapMessage> getMessages(final int start, final int end, Date earliestDate, final boolean includeDeleted, final MessageRetrievalListener<ImapMessage> listener)
         throws MessagingException {
             if (start < 1 || end < 1 || end < start) {
                 throw new MessagingException(
@@ -1295,7 +1216,9 @@ public class ImapStore extends RemoteStore {
             return search(searcher, listener);
 
         }
-        protected List<? extends Message> getMessages(final List<Long> mesgSeqs, final boolean includeDeleted, final MessageRetrievalListener listener)
+        protected List<ImapMessage> getMessages(final List<Long> mesgSeqs,
+                                                      final boolean includeDeleted,
+                                                      final MessageRetrievalListener<ImapMessage> listener)
         throws MessagingException {
             ImapSearcher searcher = new ImapSearcher() {
                 @Override
@@ -1306,8 +1229,9 @@ public class ImapStore extends RemoteStore {
             return search(searcher, listener);
         }
 
-        protected List<? extends Message> getMessagesFromUids(final List<String> mesgUids, final boolean includeDeleted, final MessageRetrievalListener listener)
-        throws MessagingException {
+        protected List<? extends Message> getMessagesFromUids(final List<String> mesgUids,
+                                                              final boolean includeDeleted,
+                                                              final MessageRetrievalListener<ImapMessage> listener) throws MessagingException {
             ImapSearcher searcher = new ImapSearcher() {
                 @Override
                 public List<ImapResponse> search() throws IOException, MessagingException {
@@ -1317,15 +1241,14 @@ public class ImapStore extends RemoteStore {
             return search(searcher, listener);
         }
 
-        private List<Message> search(ImapSearcher searcher, MessageRetrievalListener<ImapMessage> listener) throws MessagingException {
-
+        protected List<ImapMessage> search(ImapSearcher searcher, MessageRetrievalListener<ImapMessage> listener) throws MessagingException {
             checkOpen(); //only need READ access
-            List<Message> messages = new ArrayList<Message>();
+            List<ImapMessage> messages = new ArrayList<ImapMessage>();
             try {
                 List<Long> uids = new ArrayList<Long>();
                 List<ImapResponse> responses = searcher.search(); //
                 for (ImapResponse response : responses) {
-                    if (response.mTag == null) {
+                    if (response.getTag() == null) {
                         if (ImapResponseParser.equalsIgnoreCase(response.get(0), "SEARCH")) {
                             for (int i = 1, count = response.size(); i < count; i++) {
                                 uids.add(response.getLong(i));
@@ -1359,15 +1282,15 @@ public class ImapStore extends RemoteStore {
 
 
         @Override
-        public List<? extends Message> getMessages(MessageRetrievalListener listener) throws MessagingException {
+        public List<ImapMessage> getMessages(MessageRetrievalListener<ImapMessage> listener) throws MessagingException {
             return getMessages(null, listener);
         }
 
         @Override
-        public List<? extends Message> getMessages(String[] uids, MessageRetrievalListener listener)
+        public List<ImapMessage> getMessages(String[] uids, MessageRetrievalListener<ImapMessage> listener)
         throws MessagingException {
             checkOpen(); //only need READ access
-            List<Message> messages = new ArrayList<Message>();
+            List<ImapMessage> messages = new ArrayList<ImapMessage>();
             try {
                 if (uids == null) {
                     List<ImapResponse> responses = executeSimpleCommand("UID SEARCH 1:* NOT DELETED");
@@ -1398,7 +1321,7 @@ public class ImapStore extends RemoteStore {
         }
 
         @Override
-        public void fetch(List<? extends Message> messages, FetchProfile fp, MessageRetrievalListener<ImapMessage> listener)
+        public void fetch(List<ImapMessage> messages, FetchProfile fp, MessageRetrievalListener<ImapMessage> listener)
         throws MessagingException {
             if (messages == null || messages.isEmpty()) {
                 return;
@@ -1457,7 +1380,7 @@ public class ImapStore extends RemoteStore {
                     ImapResponse response;
                     int messageNumber = 0;
 
-                    ImapResponseParser.IImapResponseCallback callback = null;
+                    ImapResponseCallback callback = null;
                     if (fp.contains(FetchProfile.Item.BODY) || fp.contains(FetchProfile.Item.BODY_SANE)) {
                         callback = new FetchBodyCallback(messageMap);
                     }
@@ -1465,7 +1388,7 @@ public class ImapStore extends RemoteStore {
                     do {
                         response = mConnection.readResponse(callback);
 
-                        if (response.mTag == null && ImapResponseParser.equalsIgnoreCase(response.get(1), "FETCH")) {
+                        if (response.getTag() == null && ImapResponseParser.equalsIgnoreCase(response.get(1), "FETCH")) {
                             ImapList fetchList = (ImapList)response.getKeyedValue("FETCH");
                             String uid = fetchList.getKeyedString("UID");
                             long msgSeq = response.getLong(0);
@@ -1516,7 +1439,7 @@ public class ImapStore extends RemoteStore {
                             handleUntaggedResponse(response);
                         }
 
-                    } while (response.mTag == null);
+                    } while (response.getTag() == null);
                 } catch (IOException ioe) {
                     throw ioExceptionHandler(mConnection, ioe);
                 }
@@ -1525,7 +1448,7 @@ public class ImapStore extends RemoteStore {
 
 
         @Override
-        public void fetchPart(Message message, Part part, MessageRetrievalListener listener)
+        public void fetchPart(Message message, Part part, MessageRetrievalListener<Message> listener)
         throws MessagingException {
             checkOpen(); //only need READ access
 
@@ -1551,12 +1474,12 @@ public class ImapStore extends RemoteStore {
                 ImapResponse response;
                 int messageNumber = 0;
 
-                ImapResponseParser.IImapResponseCallback callback = new FetchPartCallback(part);
+                ImapResponseCallback callback = new FetchPartCallback(part);
 
                 do {
                     response = mConnection.readResponse(callback);
 
-                    if ((response.mTag == null) &&
+                    if ((response.getTag() == null) &&
                             (ImapResponseParser.equalsIgnoreCase(response.get(1), "FETCH"))) {
                         ImapList fetchList = (ImapList)response.getKeyedValue("FETCH");
                         String uid = fetchList.getKeyedString("UID");
@@ -1603,7 +1526,7 @@ public class ImapStore extends RemoteStore {
                         handleUntaggedResponse(response);
                     }
 
-                } while (response.mTag == null);
+                } while (response.getTag() == null);
             } catch (IOException ioe) {
                 throw ioExceptionHandler(mConnection, ioe);
             }
@@ -1678,7 +1601,6 @@ public class ImapStore extends RemoteStore {
 
         /**
          * Handle any untagged responses that the caller doesn't care to handle themselves.
-         * @param responses
          */
         protected List<ImapResponse> handleUntaggedResponses(List<ImapResponse> responses) {
             for (ImapResponse response : responses) {
@@ -1712,10 +1634,9 @@ public class ImapStore extends RemoteStore {
 
         /**
          * Handle an untagged response that the caller doesn't care to handle themselves.
-         * @param response
          */
         protected void handleUntaggedResponse(ImapResponse response) {
-            if (response.mTag == null && response.size() > 1) {
+            if (response.getTag() == null && response.size() > 1) {
                 if (ImapResponseParser.equalsIgnoreCase(response.get(1), "EXISTS")) {
                     mMessageCount = response.getNumber(0);
                     if (K9MailLib.isDebug())
@@ -1945,14 +1866,14 @@ public class ImapStore extends RemoteStore {
                     do {
                         response = mConnection.readResponse();
                         handleUntaggedResponse(response);
-                        if (response.mCommandContinuationRequested) {
+                        if (response.isContinuationRequested()) {
                             EOLConvertingOutputStream eolOut = new EOLConvertingOutputStream(mConnection.getOutputStream());
                             message.writeTo(eolOut);
                             eolOut.write('\r');
                             eolOut.write('\n');
                             eolOut.flush();
                         }
-                    } while (response.mTag == null);
+                    } while (response.getTag() == null);
 
                     if (response.size() > 1) {
                         /*
@@ -2029,7 +1950,7 @@ public class ImapStore extends RemoteStore {
                     executeSimpleCommand(
                         String.format("UID SEARCH HEADER MESSAGE-ID %s", encodeString(messageId)));
                 for (ImapResponse response1 : responses) {
-                    if (response1.mTag == null && ImapResponseParser.equalsIgnoreCase(response1.get(0), "SEARCH")
+                    if (response1.getTag() == null && ImapResponseParser.equalsIgnoreCase(response1.get(0), "SEARCH")
                             && response1.size() > 1) {
                         return response1.getString(1);
                     }
@@ -2176,7 +2097,7 @@ public class ImapStore extends RemoteStore {
          * @throws MessagingException On any error.
          */
         @Override
-        public List<Message> search(final String queryString, final Set<Flag> requiredFlags, final Set<Flag> forbiddenFlags)
+        public List<ImapMessage> search(final String queryString, final Set<Flag> requiredFlags, final Set<Flag> forbiddenFlags)
             throws MessagingException {
 
             if (!mStoreConfig.allowRemoteSearch()) {
@@ -2277,7 +2198,7 @@ public class ImapStore extends RemoteStore {
         }
     }
 
-    static class ImapMessage extends MimeMessage {
+    protected static class ImapMessage extends MimeMessage {
         ImapMessage(String uid, Folder folder) {
             this.mUid = uid;
             this.mFolder = folder;
@@ -2304,22 +2225,7 @@ public class ImapStore extends RemoteStore {
         }
     }
 
-    static class ImapException extends MessagingException {
-        private static final long serialVersionUID = 3725007182205882394L;
-        private final String mAlertText;
-
-        public ImapException(String message, String alertText) {
-            super(message, true);
-            this.mAlertText = alertText;
-        }
-
-        public String getAlertText() {
-            return mAlertText;
-        }
-
-    }
-
-    public class ImapFolderPusher extends ImapFolder implements UntaggedHandler {
+    protected class ImapFolderPusher extends ImapFolder implements UntaggedHandler {
         private final PushReceiver receiver;
         private Thread listeningThread = null;
         private final AtomicBoolean stop = new AtomicBoolean(false);
@@ -2465,7 +2371,7 @@ public class ImapStore extends RemoteStore {
                                 }
 
                             } else {
-                                List<ImapResponse> untaggedResponses = null;
+                                List<ImapResponse> untaggedResponses;
                                 while (!storedUntaggedResponses.isEmpty()) {
                                     if (K9MailLib.isDebug())
                                         Log.i(LOG_TAG, "Processing " + storedUntaggedResponses.size() + " untagged responses from previous commands for " + getLogId());
@@ -2482,7 +2388,7 @@ public class ImapStore extends RemoteStore {
                                 doneSent.set(false);
 
                                 conn.setReadTimeout((mStoreConfig.getIdleRefreshMinutes() * 60 * 1000) + IDLE_READ_TIMEOUT_INCREMENT);
-                                untaggedResponses = executeSimpleCommand(ImapCommands.COMMAND_IDLE, false, ImapFolderPusher.this);
+                                executeSimpleCommand(ImapCommands.COMMAND_IDLE, false, ImapFolderPusher.this);
                                 idling.set(false);
                                 delayTime.set(NORMAL_DELAY_TIME);
                                 idleFailureCount.set(0);
@@ -2536,7 +2442,7 @@ public class ImapStore extends RemoteStore {
 
         @Override
         protected void handleUntaggedResponse(ImapResponse response) {
-            if (response.mTag == null && response.size() > 1) {
+            if (response.getTag() == null && response.size() > 1) {
                 Object responseType = response.get(1);
                 if (ImapResponseParser.equalsIgnoreCase(responseType, "FETCH")
                         || ImapResponseParser.equalsIgnoreCase(responseType, "EXPUNGE")
@@ -2665,7 +2571,7 @@ public class ImapStore extends RemoteStore {
         protected int processUntaggedResponse(long oldMessageCount, ImapResponse response, List<Long> flagSyncMsgSeqs, List<String> removeMsgUids) {
             super.handleUntaggedResponse(response);
             int messageCountDelta = 0;
-            if (response.mTag == null && response.size() > 1) {
+            if (response.getTag() == null && response.size() > 1) {
                 try {
                     Object responseType = response.get(1);
                     if (ImapResponseParser.equalsIgnoreCase(responseType, "FETCH")) {
@@ -2780,7 +2686,7 @@ public class ImapStore extends RemoteStore {
                     Log.e(LOG_TAG, "Exception while sending DONE for " + getLogId(), e);
                 }
             } else {
-                if (response.mTag == null) {
+                if (response.getTag() == null) {
                     if (response.size() > 1) {
                         boolean started = false;
                         Object responseType = response.get(1);
@@ -2800,7 +2706,7 @@ public class ImapStore extends RemoteStore {
                                 Log.e(LOG_TAG, "Exception while sending DONE for " + getLogId(), e);
                             }
                         }
-                    } else if (response.mCommandContinuationRequested) {
+                    } else if (response.isContinuationRequested()) {
                         if (K9MailLib.isDebug())
                             Log.d(LOG_TAG, "Idling " + getLogId());
 
@@ -2889,10 +2795,6 @@ public class ImapStore extends RemoteStore {
         public void setLastRefresh(long lastRefresh) {
             this.lastRefresh = lastRefresh;
         }
-
-    }
-    public static interface UntaggedHandler {
-        void handleAsyncUntaggedResponse(ImapResponse respose);
     }
 
     protected static class ImapPushState {
@@ -2929,21 +2831,21 @@ public class ImapStore extends RemoteStore {
         }
 
     }
-    private interface ImapSearcher {
+    protected interface ImapSearcher {
         List<ImapResponse> search() throws IOException, MessagingException;
     }
 
-    private static class FetchBodyCallback implements ImapResponseParser.IImapResponseCallback {
+    private static class FetchBodyCallback implements ImapResponseCallback {
         private Map<String, Message> mMessageMap;
 
-        FetchBodyCallback(Map<String, Message> mesageMap) {
-            mMessageMap = mesageMap;
+        FetchBodyCallback(Map<String, Message> messageMap) {
+            mMessageMap = messageMap;
         }
 
         @Override
         public Object foundLiteral(ImapResponse response,
-                                   FixedLengthInputStream literal) throws IOException, Exception {
-            if (response.mTag == null &&
+                                   FixedLengthInputStream literal) throws MessagingException, IOException {
+            if (response.getTag() == null &&
                     ImapResponseParser.equalsIgnoreCase(response.get(1), "FETCH")) {
                 ImapList fetchList = (ImapList)response.getKeyedValue("FETCH");
                 String uid = fetchList.getKeyedString("UID");
@@ -2952,13 +2854,13 @@ public class ImapStore extends RemoteStore {
                 message.parse(literal);
 
                 // Return placeholder object
-                return Integer.valueOf(1);
+                return 1;
             }
             return null;
         }
     }
 
-    private static class FetchPartCallback implements ImapResponseParser.IImapResponseCallback {
+    private static class FetchPartCallback implements ImapResponseCallback {
         private Part mPart;
 
         FetchPartCallback(Part part) {
@@ -2967,8 +2869,8 @@ public class ImapStore extends RemoteStore {
 
         @Override
         public Object foundLiteral(ImapResponse response,
-                                   FixedLengthInputStream literal) throws IOException, Exception {
-            if (response.mTag == null &&
+                                   FixedLengthInputStream literal) throws MessagingException, IOException {
+            if (response.getTag() == null &&
                     ImapResponseParser.equalsIgnoreCase(response.get(1), "FETCH")) {
                 //TODO: check for correct UID
 
@@ -2989,5 +2891,77 @@ public class ImapStore extends RemoteStore {
             return null;
         }
         return TextUtils.join(String.valueOf(separator), parts);
+    }
+
+    private class StoreImapSettings implements ImapSettings {
+        @Override
+        public String getHost() {
+            return mHost;
+        }
+
+        @Override
+        public int getPort() {
+            return mPort;
+        }
+
+        @Override
+        public ConnectionSecurity getConnectionSecurity() {
+            return mConnectionSecurity;
+        }
+
+        @Override
+        public AuthType getAuthType() {
+            return mAuthType;
+        }
+
+        @Override
+        public String getUsername() {
+            return mUsername;
+        }
+
+        @Override
+        public String getPassword() {
+            return mPassword;
+        }
+
+        @Override
+        public String getClientCertificateAlias() {
+            return mClientCertificateAlias;
+        }
+
+        @Override
+        public boolean useCompression(final int type) {
+            return mStoreConfig.useCompression(type);
+        }
+
+        @Override
+        public String getPathPrefix() {
+            return mPathPrefix;
+        }
+
+        @Override
+        public void setPathPrefix(String prefix) {
+            mPathPrefix = prefix;
+        }
+
+        @Override
+        public String getPathDelimiter() {
+            return mPathDelimiter;
+        }
+
+        @Override
+        public void setPathDelimiter(String delimiter) {
+            mPathDelimiter = delimiter;
+        }
+
+        @Override
+        public String getCombinedPrefix() {
+            return mCombinedPrefix;
+        }
+
+        @Override
+        public void setCombinedPrefix(String prefix) {
+            mCombinedPrefix = prefix;
+        }
     }
 }

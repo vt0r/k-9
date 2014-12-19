@@ -3,6 +3,9 @@ repositories {
 }
 
 apply plugin: 'java'
+apply plugin: 'findbugs'
+apply plugin: 'checkstyle'
+apply plugin: 'jacoco'
 
 dependencies {
     testCompile project(':')
@@ -18,6 +21,7 @@ sourceSets {
 
     test {
         compileClasspath += files(rootProject.compileDebugJava.destinationDir)
+        compileClasspath += rootProject.compileDebugJava.classpath
         runtimeClasspath += files(rootProject.compileDebugJava.destinationDir)
         runtimeClasspath += rootProject.compileDebugJava.classpath
         java {
@@ -26,8 +30,19 @@ sourceSets {
     }
 }
 
-test.dependsOn ':compileDebugJava'
-
-task wrapper(type: Wrapper) {
-    gradleVersion = '1.11'
+checkstyle {
+    ignoreFailures = true
+    configFile file("$rootProject.projectDir/config/checkstyle/checkstyle.xml")
 }
+
+findbugs {
+    ignoreFailures = true
+    effort = 'max'
+    includeFilter = file("$rootProject.projectDir/config/findbugs/include_filter.xml")
+    excludeFilter = file("$rootProject.projectDir/config/findbugs/exclude_filter.xml")
+}
+
+check.dependsOn 'checkstyleTest'
+check.dependsOn 'findbugsTest'
+
+compileTestJava.dependsOn ':compileDebugJava'
