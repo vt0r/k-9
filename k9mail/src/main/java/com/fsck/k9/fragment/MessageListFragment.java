@@ -99,7 +99,7 @@ import com.fsck.k9.search.ConditionsTreeNode;
 import com.fsck.k9.search.LocalSearch;
 import com.fsck.k9.search.SearchSpecification;
 import com.fsck.k9.search.SearchSpecification.SearchCondition;
-import com.fsck.k9.search.SearchSpecification.Searchfield;
+import com.fsck.k9.search.SearchSpecification.SearchField;
 import com.fsck.k9.search.SqlQueryBuilder;
 
 import com.handmark.pulltorefresh.library.ILoadingLayout;
@@ -2072,7 +2072,7 @@ public class MessageListFragment extends Fragment implements OnItemClickListener
             }
 
             if (holder.from != null ) {
-                holder.from.setTypeface(null, maybeBoldTypeface);
+                holder.from.setTypeface(holder.from.getTypeface(), maybeBoldTypeface);
                 if (mSenderAboveSubject) {
                     holder.from.setCompoundDrawablesWithIntrinsicBounds(
                             statusHolder, // left
@@ -2095,7 +2095,7 @@ public class MessageListFragment extends Fragment implements OnItemClickListener
                             null); // bottom
                 }
 
-                holder.subject.setTypeface(null, maybeBoldTypeface);
+                holder.subject.setTypeface(holder.subject.getTypeface(), maybeBoldTypeface);
                 holder.subject.setText(subject);
             }
 
@@ -2217,7 +2217,7 @@ public class MessageListFragment extends Fragment implements OnItemClickListener
             }
 
             if (mActionMode == null) {
-                mActionMode = getActivity().startActionMode(mActionModeCallback);
+                startAndPrepareActionMode();
             }
             computeBatchDirection();
             updateActionModeTitle();
@@ -2276,7 +2276,7 @@ public class MessageListFragment extends Fragment implements OnItemClickListener
                 return;
             }
         } else {
-            mActionMode = getActivity().startActionMode(mActionModeCallback);
+            startAndPrepareActionMode();
         }
 
         if (selected) {
@@ -2287,9 +2287,6 @@ public class MessageListFragment extends Fragment implements OnItemClickListener
 
         computeBatchDirection();
         updateActionModeTitle();
-
-        // make sure the onPrepareActionMode is called
-        mActionMode.invalidate();
 
         computeSelectAllVisibility();
 
@@ -3360,7 +3357,7 @@ public class MessageListFragment extends Fragment implements OnItemClickListener
     private String getThreadId(LocalSearch search) {
         for (ConditionsTreeNode node : search.getLeafSet()) {
             SearchCondition condition = node.mCondition;
-            if (condition.field == Searchfield.THREAD_ID) {
+            if (condition.field == SearchField.THREAD_ID) {
                 return condition.value;
             }
         }
@@ -3536,11 +3533,16 @@ public class MessageListFragment extends Fragment implements OnItemClickListener
         }
 
         if (mActionMode == null) {
-            mActionMode = getActivity().startActionMode(mActionModeCallback);
+            startAndPrepareActionMode();
         }
 
         recalculateSelectionCount();
         updateActionModeTitle();
+    }
+
+    private void startAndPrepareActionMode() {
+        mActionMode = getActivity().startActionMode(mActionModeCallback);
+        mActionMode.invalidate();
     }
 
     /**
