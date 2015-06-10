@@ -88,8 +88,6 @@ public class MessageWebView extends RigidWebView {
 
         // Disable network images by default.  This is overridden by preferences.
         blockNetworkData(true);
-
-        setWebViewClient(K9WebViewClient.newInstance());
     }
 
     /**
