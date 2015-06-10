@@ -4743,7 +4743,6 @@ public class MessagingController implements Runnable {
     private void notifyAccount(Context context, Account account,
             LocalMessage message, int previousUnreadMessageCount) {
         final NotificationData data = getNotificationData(account, previousUnreadMessageCount);
-        //noinspection SynchronizationOnLocalVariableOrMethodParameter
         synchronized (data) {
             notifyAccountWithDataLocked(context, account, message, data);
         }
@@ -4807,7 +4806,7 @@ public class MessagingController implements Runnable {
             // Archive on wear
             NotificationCompat.Action wearActionArchive =
                     new NotificationCompat.Action.Builder(
-                            R.drawable.ic_action_archive_dark,
+                            R.drawable.ic_action_delete_dark,
                             context.getString(R.string.notification_action_archive),
                             NotificationActionService.getArchiveAllMessagesIntent(context, account, allRefs, totalMsgCount > msgCount, notificationID))
                             .build();
@@ -4943,7 +4942,7 @@ public class MessagingController implements Runnable {
                 //do not set summary notification to localOnly.
                 //Wear devices use the vibrate pattern of the summary
                 //despite not displaying the summary
-                builder.setLocalOnly(true);
+                //builder.setLocalOnly(true);
 
                 if (!data.droppedMessages.isEmpty()) {
                     style.setSummaryText(context.getString(R.string.notification_additional_messages,
