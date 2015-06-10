@@ -4894,7 +4894,7 @@ public class MessagingController implements Runnable {
                     subBuilder.setAutoCancel(true); // summary closes all, stacked only itself
 
                     // set content
-                    setNotificationContent(context, m, getMessageSender(context, account, m), getMessageSubject(context, m), subBuilder, accountDescr);
+                    setNotificationContent(context, m, getMessageSender(context, account, message), getMessageSubject(context, message), subBuilder, accountDescr);
 
 
                     // set actions
@@ -5083,6 +5083,7 @@ public class MessagingController implements Runnable {
         if (preview != null) {
             style.bigText(preview);
         }
+        builder.setContentTitle(sender);
         builder.setContentText(subject);
         builder.setSubText(accountDescr);
         builder.setContentTitle(sender);
