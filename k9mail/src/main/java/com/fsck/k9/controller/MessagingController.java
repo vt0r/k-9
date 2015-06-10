@@ -4873,9 +4873,8 @@ public class MessagingController implements Runnable {
         if (platformSupportsExtendedNotifications() && !privacyModeEnabled) {
             if (newMessages > 1) {
 
-                // Stacked notifications for Android Wear
+                //TODO: Stacked notifications for Android Wear
                 // https://developer.android.com/training/wearables/notifications/stacks.html
-                // TODO: Bug! Stacked notification are shown on phone too, together with summary
 
                 // multiple messages pending, show inbox style
                 NotificationCompat.InboxStyle style = new NotificationCompat.InboxStyle(builder);
