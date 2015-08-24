@@ -329,6 +329,7 @@ Please submit bug reports, contribute new features and ask questions at
     <string name="global_settings_confirm_action_delete">Delete</string>
     <string name="global_settings_confirm_action_delete_starred">Delete Starred (in message view)</string>
     <string name="global_settings_confirm_action_spam">Spam</string>
+    <string name="global_settings_confirm_menu_discard">Discard message</string>
     <string name="global_settings_confirm_action_delete_notif">Delete (from notification)</string>
 
     <string name="global_settings_privacy_hide_useragent">Remove K-9 User-Agent from mail headers</string>
@@ -1122,6 +1123,7 @@ Please submit bug reports, contribute new features and ask questions at
     <string name="openpgp_error">OpenPGP Error: %s</string>
     <string name="openpgp_unknown_error">Unknown OpenPGP Error</string>
     <string name="openpgp_user_id">User Id</string>
+    <string name="openpgp_canceled_by_user">Canceled by user</string>
     
     <string name="openpgp_result_no_signature">"Not Signed"</string>
     <string name="openpgp_result_invalid_signature">"Invalid signature!"</string>
@@ -1129,9 +1131,11 @@ Please submit bug reports, contribute new features and ask questions at
     <string name="openpgp_result_signature_certified">"Signed by"</string>
     <string name="openpgp_result_signature_expired_key">"Key is expired!"</string>
     <string name="openpgp_result_signature_revoked_key">"Key has been revoked!"</string>
+    <string name="openpgp_result_signature_insecure">"Insecure!"</string>
     <string name="openpgp_result_signature_missing_key">"Unknown public key"</string>
     <string name="openpgp_result_encrypted">"Encrypted"</string>
     <string name="openpgp_result_not_encrypted">"Not Encrypted"</string>
+    <string name="openpgp_result_decryption_insecure">"Insecure"</string>
     <string name="openpgp_result_action_show">"Show"</string>
     <string name="openpgp_result_action_lookup">"Lookup"</string>
     <string name="openpgp_result_no_name">"No name"</string>
