@@ -53,10 +53,11 @@ import com.fsck.k9.mail.internet.SizeAware;
 import com.fsck.k9.mail.message.MessageHeaderParser;
 import com.fsck.k9.mailstore.LockableDatabase.DbCallback;
 import com.fsck.k9.mailstore.LockableDatabase.WrappedException;
+import com.fsck.k9.message.extractors.AttachmentInfoExtractor;
+import com.fsck.k9.message.extractors.MessageFulltextCreator;
 import com.fsck.k9.message.extractors.MessagePreviewCreator;
 import com.fsck.k9.message.extractors.PreviewResult;
 import com.fsck.k9.message.extractors.PreviewResult.PreviewType;
-import com.fsck.k9.message.extractors.MessageFulltextCreator;
 import com.fsck.k9.preferences.Storage;
 import com.fsck.k9.preferences.StorageEditor;
 import org.apache.commons.io.IOUtils;
@@ -1400,10 +1401,14 @@ public class LocalFolder extends Folder<LocalMessage> implements Serializable {
     }
 
     private void missingPartToContentValues(ContentValues cv, Part part) throws MessagingException {
-        AttachmentViewInfo attachment = LocalMessageExtractor.extractAttachmentInfo(part);
+        AttachmentViewInfo attachment = AttachmentInfoExtractor.extractAttachmentInfo(part);
         cv.put("display_name", attachment.displayName);
         cv.put("data_location", DataLocation.MISSING);
         cv.put("decoded_body_size", attachment.size);
+
+        if (MimeUtility.isMultipart(part.getMimeType())) {
+            cv.put("boundary", MimeMultipart.generateBoundary());
+        }
     }
 
     private void messageMarkerToContentValues(ContentValues cv) throws MessagingException {
@@ -1412,7 +1417,7 @@ public class LocalFolder extends Folder<LocalMessage> implements Serializable {
 
     private File leafPartToContentValues(ContentValues cv, Part part, Body body)
             throws MessagingException, IOException {
-        AttachmentViewInfo attachment = LocalMessageExtractor.extractAttachmentInfo(part);
+        AttachmentViewInfo attachment = AttachmentInfoExtractor.extractAttachmentInfo(part);
         cv.put("display_name", attachment.displayName);
 
         String encoding = getTransferEncoding(part);

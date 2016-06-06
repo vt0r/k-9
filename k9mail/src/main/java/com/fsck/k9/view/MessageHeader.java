@@ -42,6 +42,7 @@ import com.fsck.k9.mail.Message;
 import com.fsck.k9.mail.MessagingException;
 import com.fsck.k9.mail.internet.MimeUtility;
 
+
 public class MessageHeader extends LinearLayout implements OnClickListener, OnLongClickListener {
     private Context mContext;
     private TextView mFromView;
@@ -192,11 +193,7 @@ public class MessageHeader extends LinearLayout implements OnClickListener, OnLo
     }
 
     private void onAddRecipientsToClipboard(Message.RecipientType recipientType) {
-        try {
-            onAddAddressesToClipboard(mMessage.getRecipients(recipientType));
-        } catch (MessagingException e) {
-            Log.e(K9.LOG_TAG, "Couldn't get recipients address", e);
-        }
+        onAddAddressesToClipboard(mMessage.getRecipients(recipientType));
     }
 
     public void setOnFlagListener(OnClickListener listener) {
