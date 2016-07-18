@@ -83,13 +83,6 @@
                 <category android:name="android.intent.category.DEFAULT"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW"/>
-                <data android:mimeType="application/x-k9settings"/>
-
-                <category android:name="android.intent.category.DEFAULT"/>
-                <category android:name="android.intent.category.BROWSABLE"/>
-            </intent-filter>
         </activity>
 
         <activity
@@ -415,14 +408,14 @@
             android:exported="false"/>
 
         <provider
-            android:name=".provider.K9FileProvider"
-            android:authorities="${applicationId}.fileprovider"
+            android:name=".provider.DecryptedFileProvider"
+            android:authorities="${applicationId}.decryptedfileprovider"
             android:exported="false"
             android:grantUriPermissions="true">
 
             <meta-data
                 android:name="android.support.FILE_PROVIDER_PATHS"
-                android:resource="@xml/allowed_file_provider_paths" />
+                android:resource="@xml/decrypted_file_provider_paths" />
 
         </provider>
 

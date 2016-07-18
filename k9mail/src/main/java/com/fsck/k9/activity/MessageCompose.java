@@ -1,7 +1,6 @@
 package com.fsck.k9.activity;
 
 
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -9,22 +8,18 @@ import java.util.Map;
 import java.util.regex.Pattern;
 
 import android.annotation.SuppressLint;
-import android.annotation.TargetApi;
 import android.app.AlertDialog;
 import android.app.AlertDialog.Builder;
 import android.app.Dialog;
-import android.app.LoaderManager;
 import android.app.PendingIntent;
-import android.content.ClipData;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.IntentSender;
 import android.content.IntentSender.SendIntentException;
-import android.content.Loader;
 import android.content.pm.ActivityInfo;
 import android.net.Uri;
 import android.os.AsyncTask;
-import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Parcelable;
@@ -43,7 +38,6 @@ import android.view.View.OnClickListener;
 import android.view.View.OnFocusChangeListener;
 import android.view.Window;
 import android.widget.EditText;
-import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -55,8 +49,11 @@ import com.fsck.k9.Identity;
 import com.fsck.k9.K9;
 import com.fsck.k9.Preferences;
 import com.fsck.k9.R;
+import com.fsck.k9.activity.MessageLoaderHelper.MessageLoaderCallbacks;
+import com.fsck.k9.activity.compose.AttachmentPresenter;
+import com.fsck.k9.activity.compose.AttachmentPresenter.AttachmentMvpView;
+import com.fsck.k9.activity.compose.AttachmentPresenter.WaitingAction;
 import com.fsck.k9.activity.compose.ComposeCryptoStatus;
-import com.fsck.k9.activity.compose.ComposeCryptoStatus.AttachErrorState;
 import com.fsck.k9.activity.compose.ComposeCryptoStatus.SendErrorState;
 import com.fsck.k9.activity.compose.CryptoSettingsDialog.OnCryptoModeChangedListener;
 import com.fsck.k9.activity.compose.IdentityAdapter;
@@ -66,8 +63,6 @@ import com.fsck.k9.activity.compose.RecipientMvpView;
 import com.fsck.k9.activity.compose.RecipientPresenter;
 import com.fsck.k9.activity.compose.RecipientPresenter.CryptoMode;
 import com.fsck.k9.activity.compose.SaveMessageTask;
-import com.fsck.k9.activity.loader.AttachmentContentLoader;
-import com.fsck.k9.activity.loader.AttachmentInfoLoader;
 import com.fsck.k9.activity.misc.Attachment;
 import com.fsck.k9.controller.MessagingController;
 import com.fsck.k9.controller.MessagingListener;
@@ -83,12 +78,9 @@ import com.fsck.k9.mail.Flag;
 import com.fsck.k9.mail.Message;
 import com.fsck.k9.mail.Message.RecipientType;
 import com.fsck.k9.mail.MessagingException;
-import com.fsck.k9.mail.Multipart;
-import com.fsck.k9.mail.Part;
 import com.fsck.k9.mail.internet.MimeMessage;
-import com.fsck.k9.mail.internet.MimeUtility;
-import com.fsck.k9.mailstore.LocalBodyPart;
 import com.fsck.k9.mailstore.LocalMessage;
+import com.fsck.k9.mailstore.MessageViewInfo;
 import com.fsck.k9.message.ComposePgpInlineDecider;
 import com.fsck.k9.message.IdentityField;
 import com.fsck.k9.message.IdentityHeaderParser;
@@ -97,7 +89,6 @@ import com.fsck.k9.message.PgpMessageBuilder;
 import com.fsck.k9.message.QuotedTextMode;
 import com.fsck.k9.message.SimpleMessageBuilder;
 import com.fsck.k9.message.SimpleMessageFormat;
-import com.fsck.k9.provider.AttachmentProvider;
 import com.fsck.k9.ui.EolConvertingEditText;
 import com.fsck.k9.ui.compose.QuotedMessageMvpView;
 import com.fsck.k9.ui.compose.QuotedMessagePresenter;
@@ -125,8 +116,6 @@ public class MessageCompose extends K9Activity implements OnClickListener,
     public static final String EXTRA_MESSAGE_BODY  = "messageBody";
     public static final String EXTRA_MESSAGE_REFERENCE = "message_reference";
 
-    private static final String STATE_KEY_ATTACHMENTS =
-        "com.fsck.k9.activity.MessageCompose.attachments";
     private static final String STATE_KEY_SOURCE_MESSAGE_PROCED =
         "com.fsck.k9.activity.MessageCompose.stateKeySourceMessageProced";
     private static final String STATE_KEY_DRAFT_ID = "com.fsck.k9.activity.MessageCompose.draftId";
@@ -138,11 +127,7 @@ public class MessageCompose extends K9Activity implements OnClickListener,
     private static final String STATE_REFERENCES = "com.fsck.k9.activity.MessageCompose.references";
     private static final String STATE_KEY_READ_RECEIPT = "com.fsck.k9.activity.MessageCompose.messageReadReceipt";
     private static final String STATE_KEY_DRAFT_NEEDS_SAVING = "com.fsck.k9.activity.MessageCompose.draftNeedsSaving";
-    private static final String STATE_KEY_NUM_ATTACHMENTS_LOADING = "numAttachmentsLoading";
-    private static final String STATE_KEY_WAITING_FOR_ATTACHMENTS = "waitingForAttachments";
     private static final String STATE_ALREADY_NOTIFIED_USER_OF_EMPTY_SUBJECT = "alreadyNotifiedUserOfEmptySubject";
-
-    private static final String LOADER_ARG_ATTACHMENT = "attachment";
 
     private static final String FRAGMENT_WAITING_FOR_ATTACHMENT = "waitingForAttachment";
 
@@ -151,12 +136,11 @@ public class MessageCompose extends K9Activity implements OnClickListener,
     private static final int MSG_SKIPPED_ATTACHMENTS = 3;
     public static final int MSG_SAVED_DRAFT = 4;
     private static final int MSG_DISCARDED_DRAFT = 5;
-    private static final int MSG_PERFORM_STALLED_ACTION = 6;
-
-    private static final int ACTIVITY_REQUEST_PICK_ATTACHMENT = 1;
 
     private static final int REQUEST_MASK_RECIPIENT_PRESENTER = (1<<8);
-    private static final int REQUEST_MASK_MESSAGE_BUILDER = (2<<8);
+    private static final int REQUEST_MASK_LOADER_HELPER = (1<<9);
+    private static final int REQUEST_MASK_ATTACHMENT_PRESENTER = (1<<10);
+    private static final int REQUEST_MASK_MESSAGE_BUILDER = (1<<11);
 
     /**
      * Regular expression to remove the first localized "Re:" prefix in subjects.
@@ -165,7 +149,10 @@ public class MessageCompose extends K9Activity implements OnClickListener,
      * - "Aw:" (german: abbreviation for "Antwort")
      */
     private static final Pattern PREFIX = Pattern.compile("^AW[:\\s]\\s*", Pattern.CASE_INSENSITIVE);
+
     private QuotedMessagePresenter quotedMessagePresenter;
+    private MessageLoaderHelper messageLoaderHelper;
+    private AttachmentPresenter attachmentPresenter;
 
     /**
      * The account used for message composition.
@@ -196,7 +183,6 @@ public class MessageCompose extends K9Activity implements OnClickListener,
      * have already been added from the restore of the view state.
      */
     private boolean mSourceMessageProcessed = false;
-    private int mMaxLoaderId = 0;
 
     private RecipientPresenter recipientPresenter;
     private MessageBuilder currentMessageBuilder;
@@ -249,8 +235,6 @@ public class MessageCompose extends K9Activity implements OnClickListener,
      */
     private Action mAction;
 
-    private Listener mListener = new Listener();
-
     private boolean mReadReceipt = false;
 
     private TextView mChooseIdentityButton;
@@ -284,23 +268,6 @@ public class MessageCompose extends K9Activity implements OnClickListener,
      */
     private long mDraftId = INVALID_DRAFT_ID;
 
-    /**
-     * Number of attachments currently being fetched.
-     */
-    private int mNumAttachmentsLoading = 0;
-
-    private enum WaitingAction {
-        NONE,
-        SEND,
-        SAVE
-    }
-
-    /**
-     * Specifies what action to perform once attachments have been fetched.
-     */
-    private WaitingAction mWaitingForAttachments = WaitingAction.NONE;
-
-
     private Handler mHandler = new Handler() {
         @Override
         public void handleMessage(android.os.Message msg) {
@@ -330,9 +297,6 @@ public class MessageCompose extends K9Activity implements OnClickListener,
                         getString(R.string.message_discarded_toast),
                         Toast.LENGTH_LONG).show();
                     break;
-                case MSG_PERFORM_STALLED_ACTION:
-                    performStalledAction();
-                    break;
                 default:
                     super.handleMessage(msg);
                     break;
@@ -345,7 +309,6 @@ public class MessageCompose extends K9Activity implements OnClickListener,
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
-
         super.onCreate(savedInstanceState);
 
         if (UpgradeDatabases.actionUpgradeDatabases(this, getIntent())) {
@@ -414,6 +377,7 @@ public class MessageCompose extends K9Activity implements OnClickListener,
 
         QuotedMessageMvpView quotedMessageMvpView = new QuotedMessageMvpView(this);
         quotedMessagePresenter = new QuotedMessagePresenter(this, quotedMessageMvpView, mAccount, sourceMessageBody);
+        attachmentPresenter = new AttachmentPresenter(getApplicationContext(), attachmentMvpView, getLoaderManager());
 
         mMessageContentView = (EolConvertingEditText)findViewById(R.id.message_content);
         mMessageContentView.getInputExtras(true).putBoolean("allowEmoji", true);
@@ -507,18 +471,10 @@ public class MessageCompose extends K9Activity implements OnClickListener,
         if (!mSourceMessageProcessed) {
             if (mAction == Action.REPLY || mAction == Action.REPLY_ALL ||
                     mAction == Action.FORWARD || mAction == Action.EDIT_DRAFT) {
-                /*
-                 * If we need to load the message we add ourself as a message listener here
-                 * so we can kick it off. Normally we add in onResume but we don't
-                 * want to reload the message every time the activity is resumed.
-                 * There is no harm in adding twice.
-                 */
-                MessagingController.getInstance(getApplication()).addListener(mListener);
-
-                final Account account = Preferences.getPreferences(this).getAccount(mMessageReference.getAccountUuid());
-                final String folderName = mMessageReference.getFolderName();
-                final String sourceMessageUid = mMessageReference.getUid();
-                MessagingController.getInstance(getApplication()).loadMessageForView(account, folderName, sourceMessageUid, null);
+                messageLoaderHelper = new MessageLoaderHelper(this, getLoaderManager(), getFragmentManager(),
+                        messageLoaderCallbacks);
+                mHandler.sendEmptyMessage(MSG_PROGRESS_ON);
+                messageLoaderHelper.asyncStartOrResumeLoadingMessage(mMessageReference);
             }
 
             if (mAction != Action.EDIT_DRAFT) {
@@ -640,7 +596,7 @@ public class MessageCompose extends K9Activity implements OnClickListener,
             if (Intent.ACTION_SEND.equals(action)) {
                 Uri stream = intent.getParcelableExtra(Intent.EXTRA_STREAM);
                 if (stream != null) {
-                    addAttachment(stream, type);
+                    attachmentPresenter.addAttachment(stream, type);
                 }
             } else {
                 List<Parcelable> list = intent.getParcelableArrayListExtra(Intent.EXTRA_STREAM);
@@ -648,7 +604,7 @@ public class MessageCompose extends K9Activity implements OnClickListener,
                     for (Parcelable parcelable : list) {
                         Uri stream = (Uri) parcelable;
                         if (stream != null) {
-                            addAttachment(stream, type);
+                            attachmentPresenter.addAttachment(stream, type);
                         }
                     }
                 }
@@ -668,15 +624,15 @@ public class MessageCompose extends K9Activity implements OnClickListener,
     }
 
     @Override
-    public void onResume() {
+    protected void onResume() {
         super.onResume();
-        MessagingController.getInstance(getApplication()).addListener(mListener);
+        MessagingController.getInstance(this).addListener(messagingListener);
     }
 
     @Override
     public void onPause() {
         super.onPause();
-        MessagingController.getInstance(getApplication()).removeListener(mListener);
+        MessagingController.getInstance(this).removeListener(messagingListener);
 
         boolean isPausingOnConfigurationChange = (getChangingConfigurations() & ActivityInfo.CONFIG_ORIENTATION)
                 == ActivityInfo.CONFIG_ORIENTATION;
@@ -701,9 +657,6 @@ public class MessageCompose extends K9Activity implements OnClickListener,
     protected void onSaveInstanceState(Bundle outState) {
         super.onSaveInstanceState(outState);
 
-        outState.putInt(STATE_KEY_NUM_ATTACHMENTS_LOADING, mNumAttachmentsLoading);
-        outState.putString(STATE_KEY_WAITING_FOR_ATTACHMENTS, mWaitingForAttachments.name());
-        outState.putParcelableArrayList(STATE_KEY_ATTACHMENTS, createAttachmentList());
         outState.putBoolean(STATE_KEY_SOURCE_MESSAGE_PROCED, mSourceMessageProcessed);
         outState.putLong(STATE_KEY_DRAFT_ID, mDraftId);
         outState.putSerializable(STATE_IDENTITY, mIdentity);
@@ -716,6 +669,7 @@ public class MessageCompose extends K9Activity implements OnClickListener,
 
         recipientPresenter.onSaveInstanceState(outState);
         quotedMessagePresenter.onSaveInstanceState(outState);
+        attachmentPresenter.onSaveInstanceState(outState);
     }
 
     @Override
@@ -731,37 +685,12 @@ public class MessageCompose extends K9Activity implements OnClickListener,
         super.onRestoreInstanceState(savedInstanceState);
 
         mAttachments.removeAllViews();
-        mMaxLoaderId = 0;
-
-        mNumAttachmentsLoading = savedInstanceState.getInt(STATE_KEY_NUM_ATTACHMENTS_LOADING);
-        mWaitingForAttachments = WaitingAction.NONE;
-        try {
-            String waitingFor = savedInstanceState.getString(STATE_KEY_WAITING_FOR_ATTACHMENTS);
-            mWaitingForAttachments = WaitingAction.valueOf(waitingFor);
-        } catch (Exception e) {
-            Log.w(K9.LOG_TAG, "Couldn't read value \" + STATE_KEY_WAITING_FOR_ATTACHMENTS +" +
-                    "\" from saved instance state", e);
-        }
-
-        List<Attachment> attachments = savedInstanceState.getParcelableArrayList(STATE_KEY_ATTACHMENTS);
-        // noinspection ConstantConditions, we know this is set in onSaveInstanceState
-        for (Attachment attachment : attachments) {
-            addAttachmentView(attachment);
-            if (attachment.loaderId > mMaxLoaderId) {
-                mMaxLoaderId = attachment.loaderId;
-            }
-
-            if (attachment.state == Attachment.LoadingState.URI_ONLY) {
-                initAttachmentInfoLoader(attachment);
-            } else if (attachment.state == Attachment.LoadingState.METADATA) {
-                initAttachmentContentLoader(attachment);
-            }
-        }
 
         mReadReceipt = savedInstanceState.getBoolean(STATE_KEY_READ_RECEIPT);
 
         recipientPresenter.onRestoreInstanceState(savedInstanceState);
         quotedMessagePresenter.onRestoreInstanceState(savedInstanceState);
+        attachmentPresenter.onRestoreInstanceState(savedInstanceState);
 
         mDraftId = savedInstanceState.getLong(STATE_KEY_DRAFT_ID);
         mIdentity = (Identity)savedInstanceState.getSerializable(STATE_IDENTITY);
@@ -811,7 +740,7 @@ public class MessageCompose extends K9Activity implements OnClickListener,
                 .setIdentity(mIdentity)
                 .setMessageFormat(mMessageFormat)
                 .setText(mMessageContentView.getCharacters())
-                .setAttachments(createAttachmentList())
+                .setAttachments(attachmentPresenter.createAttachmentList())
                 .setSignature(mSignatureView.getCharacters())
                 .setSignatureBeforeQuotedText(mAccount.isSignatureBeforeQuotedText())
                 .setIdentityChanged(mIdentityChanged)
@@ -837,13 +766,7 @@ public class MessageCompose extends K9Activity implements OnClickListener,
             return;
         }
 
-        if (mWaitingForAttachments != WaitingAction.NONE) {
-            return;
-        }
-
-        if (mNumAttachmentsLoading > 0) {
-            mWaitingForAttachments = WaitingAction.SEND;
-            showWaitingForAttachmentDialog();
+        if (attachmentPresenter.checkOkForSendingOrDraftSaving()) {
             return;
         }
 
@@ -856,13 +779,7 @@ public class MessageCompose extends K9Activity implements OnClickListener,
             return;
         }
 
-        if (mWaitingForAttachments != WaitingAction.NONE) {
-            return;
-        }
-
-        if (mNumAttachmentsLoading > 0) {
-            mWaitingForAttachments = WaitingAction.SAVE;
-            showWaitingForAttachmentDialog();
+        if (attachmentPresenter.checkOkForSendingOrDraftSaving()) {
             return;
         }
 
@@ -924,205 +841,6 @@ public class MessageCompose extends K9Activity implements OnClickListener,
         toast.show();
     }
 
-    private ArrayList<Attachment> createAttachmentList() {
-        ArrayList<Attachment> attachments = new ArrayList<>();
-        for (int i = 0, count = mAttachments.getChildCount(); i < count; i++) {
-            View view = mAttachments.getChildAt(i);
-            Attachment attachment = (Attachment) view.getTag();
-            attachments.add(attachment);
-        }
-        return attachments;
-    }
-
-    /**
-     * Kick off a picker for the specified MIME type and let Android take over.
-     */
-    @SuppressLint("InlinedApi")
-    private void onAddAttachment() {
-        AttachErrorState maybeAttachErrorState = recipientPresenter.getCurrentCryptoStatus().getAttachErrorStateOrNull();
-        if (maybeAttachErrorState != null) {
-            recipientPresenter.showPgpAttachError(maybeAttachErrorState);
-            return;
-        }
-
-        Intent i = new Intent(Intent.ACTION_GET_CONTENT);
-        i.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
-        i.addCategory(Intent.CATEGORY_OPENABLE);
-        i.setType("*/*");
-        isInSubActivity = true;
-        startActivityForResult(Intent.createChooser(i, null), ACTIVITY_REQUEST_PICK_ATTACHMENT);
-    }
-
-    private void addAttachment(Uri uri) {
-        addAttachment(uri, null);
-    }
-
-    private void addAttachment(Uri uri, String contentType) {
-        Attachment attachment = new Attachment();
-        attachment.state = Attachment.LoadingState.URI_ONLY;
-        attachment.uri = uri;
-        attachment.contentType = contentType;
-        attachment.loaderId = ++mMaxLoaderId;
-
-        addAttachmentView(attachment);
-
-        initAttachmentInfoLoader(attachment);
-    }
-
-    private void initAttachmentInfoLoader(Attachment attachment) {
-        LoaderManager loaderManager = getLoaderManager();
-        Bundle bundle = new Bundle();
-        bundle.putParcelable(LOADER_ARG_ATTACHMENT, attachment);
-        loaderManager.initLoader(attachment.loaderId, bundle, mAttachmentInfoLoaderCallback);
-    }
-
-    private void initAttachmentContentLoader(Attachment attachment) {
-        LoaderManager loaderManager = getLoaderManager();
-        Bundle bundle = new Bundle();
-        bundle.putParcelable(LOADER_ARG_ATTACHMENT, attachment);
-        loaderManager.initLoader(attachment.loaderId, bundle, mAttachmentContentLoaderCallback);
-    }
-
-    private void addAttachmentView(Attachment attachment) {
-        boolean hasMetadata = (attachment.state != Attachment.LoadingState.URI_ONLY);
-        boolean isLoadingComplete = (attachment.state == Attachment.LoadingState.COMPLETE);
-
-        View view = getLayoutInflater().inflate(R.layout.message_compose_attachment, mAttachments, false);
-        TextView nameView = (TextView) view.findViewById(R.id.attachment_name);
-        View progressBar = view.findViewById(R.id.progressBar);
-
-        if (hasMetadata) {
-            nameView.setText(attachment.name);
-        } else {
-            nameView.setText(R.string.loading_attachment);
-        }
-
-        progressBar.setVisibility(isLoadingComplete ? View.GONE : View.VISIBLE);
-
-        ImageButton delete = (ImageButton) view.findViewById(R.id.attachment_delete);
-        delete.setOnClickListener(MessageCompose.this);
-        delete.setTag(view);
-
-        view.setTag(attachment);
-        mAttachments.addView(view);
-    }
-
-    private View getAttachmentView(int loaderId) {
-        for (int i = 0, childCount = mAttachments.getChildCount(); i < childCount; i++) {
-            View view = mAttachments.getChildAt(i);
-            Attachment tag = (Attachment) view.getTag();
-            if (tag != null && tag.loaderId == loaderId) {
-                return view;
-            }
-        }
-
-        return null;
-    }
-
-    private LoaderManager.LoaderCallbacks<Attachment> mAttachmentInfoLoaderCallback =
-            new LoaderManager.LoaderCallbacks<Attachment>() {
-        @Override
-        public Loader<Attachment> onCreateLoader(int id, Bundle args) {
-            onFetchAttachmentStarted();
-            Attachment attachment = args.getParcelable(LOADER_ARG_ATTACHMENT);
-            return new AttachmentInfoLoader(MessageCompose.this, attachment);
-        }
-
-        @Override
-        public void onLoadFinished(Loader<Attachment> loader, Attachment attachment) {
-            int loaderId = loader.getId();
-
-            View view = getAttachmentView(loaderId);
-            if (view != null) {
-                view.setTag(attachment);
-
-                TextView nameView = (TextView) view.findViewById(R.id.attachment_name);
-                nameView.setText(attachment.name);
-
-                attachment.loaderId = ++mMaxLoaderId;
-                initAttachmentContentLoader(attachment);
-            } else {
-                onFetchAttachmentFinished();
-            }
-
-            getLoaderManager().destroyLoader(loaderId);
-        }
-
-        @Override
-        public void onLoaderReset(Loader<Attachment> loader) {
-            onFetchAttachmentFinished();
-        }
-    };
-
-    private LoaderManager.LoaderCallbacks<Attachment> mAttachmentContentLoaderCallback =
-            new LoaderManager.LoaderCallbacks<Attachment>() {
-        @Override
-        public Loader<Attachment> onCreateLoader(int id, Bundle args) {
-            Attachment attachment = args.getParcelable(LOADER_ARG_ATTACHMENT);
-            return new AttachmentContentLoader(MessageCompose.this, attachment);
-        }
-
-        @Override
-        public void onLoadFinished(Loader<Attachment> loader, Attachment attachment) {
-            int loaderId = loader.getId();
-
-            View view = getAttachmentView(loaderId);
-            if (view != null) {
-                if (attachment.state == Attachment.LoadingState.COMPLETE) {
-                    view.setTag(attachment);
-
-                    View progressBar = view.findViewById(R.id.progressBar);
-                    progressBar.setVisibility(View.GONE);
-                } else {
-                    mAttachments.removeView(view);
-                }
-            }
-
-            onFetchAttachmentFinished();
-
-            getLoaderManager().destroyLoader(loaderId);
-        }
-
-        @Override
-        public void onLoaderReset(Loader<Attachment> loader) {
-            onFetchAttachmentFinished();
-        }
-    };
-
-    private void onFetchAttachmentStarted() {
-        mNumAttachmentsLoading += 1;
-    }
-
-    private void onFetchAttachmentFinished() {
-        // We're not allowed to perform fragment transactions when called from onLoadFinished().
-        // So we use the Handler to call performStalledAction().
-        mHandler.sendEmptyMessage(MSG_PERFORM_STALLED_ACTION);
-    }
-
-    private void performStalledAction() {
-        mNumAttachmentsLoading -= 1;
-
-        WaitingAction waitingFor = mWaitingForAttachments;
-        mWaitingForAttachments = WaitingAction.NONE;
-
-        if (waitingFor != WaitingAction.NONE) {
-            dismissWaitingForAttachmentDialog();
-        }
-
-        switch (waitingFor) {
-            case SEND: {
-                performSendAfterChecks();
-                break;
-            }
-            case SAVE: {
-                performSaveAfterChecks();
-                break;
-            }
-            case NONE:
-                break;
-        }
-    }
-
     public void showContactPicker(int requestCode) {
         requestCode |= REQUEST_MASK_RECIPIENT_PRESENTER;
         isInSubActivity = true;
@@ -1140,50 +858,25 @@ public class MessageCompose extends K9Activity implements OnClickListener,
                         "this is an illegal state!");
                 return;
             }
-            currentMessageBuilder.onActivityResult(this, requestCode, resultCode, data);
+            currentMessageBuilder.onActivityResult(requestCode, resultCode, data, this);
             return;
         }
 
         if ((requestCode & REQUEST_MASK_RECIPIENT_PRESENTER) == REQUEST_MASK_RECIPIENT_PRESENTER) {
             requestCode ^= REQUEST_MASK_RECIPIENT_PRESENTER;
-            recipientPresenter.onActivityResult(resultCode, requestCode, data);
+            recipientPresenter.onActivityResult(requestCode, resultCode, data);
             return;
         }
 
-        if (resultCode != RESULT_OK) {
+        if ((requestCode & REQUEST_MASK_LOADER_HELPER) == REQUEST_MASK_LOADER_HELPER) {
+            requestCode ^= REQUEST_MASK_LOADER_HELPER;
+            messageLoaderHelper.onActivityResult(requestCode, resultCode, data);
             return;
         }
 
-        if (data == null) {
-            return;
-        }
-
-        switch (requestCode) {
-            case ACTIVITY_REQUEST_PICK_ATTACHMENT:
-                addAttachmentsFromResultIntent(data);
-                draftNeedsSaving = true;
-                break;
-        }
-    }
-
-    @TargetApi(Build.VERSION_CODES.JELLY_BEAN)
-    private void addAttachmentsFromResultIntent(Intent data) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
-            ClipData clipData = data.getClipData();
-            if (clipData != null) {
-                for (int i = 0, end = clipData.getItemCount(); i < end; i++) {
-                    Uri uri = clipData.getItemAt(i).getUri();
-                    if (uri != null) {
-                        addAttachment(uri);
-                    }
-                }
-                return;
-            }
-        }
-
-        Uri uri = data.getData();
-        if (uri != null) {
-            addAttachment(uri);
+        if ((requestCode & REQUEST_MASK_ATTACHMENT_PRESENTER) == REQUEST_MASK_ATTACHMENT_PRESENTER) {
+            requestCode ^= REQUEST_MASK_ATTACHMENT_PRESENTER;
+            attachmentPresenter.onActivityResult(resultCode, requestCode, data);
         }
     }
 
@@ -1265,15 +958,6 @@ public class MessageCompose extends K9Activity implements OnClickListener,
     @Override
     public void onClick(View view) {
         switch (view.getId()) {
-            case R.id.attachment_delete:
-                /*
-                 * The view is the delete button, and we have previously set the tag of
-                 * the delete button to the view that owns it. We don't use parent because the
-                 * view is very complex and could change in the future.
-                 */
-                mAttachments.removeView((View) view.getTag());
-                draftNeedsSaving = true;
-                break;
             case R.id.identity:
                 showDialog(DIALOG_CHOOSE_IDENTITY);
                 break;
@@ -1310,7 +994,7 @@ public class MessageCompose extends K9Activity implements OnClickListener,
                 recipientPresenter.onMenuSetPgpInline(false);
                 break;
             case R.id.add_attachment:
-                onAddAttachment();
+                attachmentPresenter.onClickAddAttachment(recipientPresenter);
                 break;
             case R.id.read_receipt:
                 onReadReceipt();
@@ -1361,43 +1045,8 @@ public class MessageCompose extends K9Activity implements OnClickListener,
         }
     }
 
-    private void showWaitingForAttachmentDialog() {
-        String title;
-
-        switch (mWaitingForAttachments) {
-            case SEND: {
-                title = getString(R.string.fetching_attachment_dialog_title_send);
-                break;
-            }
-            case SAVE: {
-                title = getString(R.string.fetching_attachment_dialog_title_save);
-                break;
-            }
-            default: {
-                return;
-            }
-        }
-
-        ProgressDialogFragment fragment = ProgressDialogFragment.newInstance(title,
-                getString(R.string.fetching_attachment_dialog_message));
-        fragment.show(getFragmentManager(), FRAGMENT_WAITING_FOR_ATTACHMENT);
-    }
-
-    public void onCancel(ProgressDialogFragment fragment) {
-        attachmentProgressDialogCancelled();
-    }
-
-    void attachmentProgressDialogCancelled() {
-        mWaitingForAttachments = WaitingAction.NONE;
-    }
-
-    private void dismissWaitingForAttachmentDialog() {
-        ProgressDialogFragment fragment = (ProgressDialogFragment)
-                getFragmentManager().findFragmentByTag(FRAGMENT_WAITING_FOR_ATTACHMENT);
-
-        if (fragment != null) {
-            fragment.dismiss();
-        }
+    public void onProgressCancel(ProgressDialogFragment fragment) {
+        attachmentPresenter.attachmentProgressDialogCancelled();
     }
 
     @Override
@@ -1481,49 +1130,6 @@ public class MessageCompose extends K9Activity implements OnClickListener,
         return super.onCreateDialog(id);
     }
 
-    /**
-     * Add all attachments of an existing message as if they were added by hand.
-     *
-     * @param part
-     *         The message part to check for being an attachment. This method will recurse if it's
-     *         a multipart part.
-     * @param depth
-     *         The recursion depth. Currently unused.
-     *
-     * @return {@code true} if all attachments were able to be attached, {@code false} otherwise.
-     *
-     * @throws MessagingException
-     *          In case of an error
-     */
-    private boolean loadAttachments(Part part, int depth) throws MessagingException {
-        if (part.getBody() instanceof Multipart) {
-            Multipart mp = (Multipart) part.getBody();
-            boolean ret = true;
-            for (int i = 0, count = mp.getCount(); i < count; i++) {
-                if (!loadAttachments(mp.getBodyPart(i), depth + 1)) {
-                    ret = false;
-                }
-            }
-            return ret;
-        }
-
-        String contentType = MimeUtility.unfoldAndDecode(part.getContentType());
-        String name = MimeUtility.getHeaderParameter(contentType, "name");
-        if (name != null) {
-            if (part instanceof LocalBodyPart) {
-                LocalBodyPart localBodyPart = (LocalBodyPart) part;
-                String accountUuid = localBodyPart.getAccountUuid();
-                long attachmentId = localBodyPart.getId();
-                Uri uri = AttachmentProvider.getAttachmentUri(accountUuid, attachmentId);
-                addAttachment(uri);
-                return true;
-            }
-            return false;
-        }
-        return true;
-    }
-
-
     public void saveDraftEventually() {
         draftNeedsSaving = true;
     }
@@ -1533,12 +1139,7 @@ public class MessageCompose extends K9Activity implements OnClickListener,
             throw new IllegalStateException("tried to edit quoted message with no referenced message");
         }
 
-        // TODO - Should we check if mSourceMessageBody is already present and bypass the MessagingController call?
-        MessagingController.getInstance(getApplication()).addListener(mListener);
-        final Account account = Preferences.getPreferences(this).getAccount(mMessageReference.getAccountUuid());
-        final String folderName = mMessageReference.getFolderName();
-        final String sourceMessageUid = mMessageReference.getUid();
-        MessagingController.getInstance(getApplication()).loadMessageForView(account, folderName, sourceMessageUid, null);
+        messageLoaderHelper.asyncStartOrResumeLoadingMessage(mMessageReference);
     }
 
     /**
@@ -1657,7 +1258,7 @@ public class MessageCompose extends K9Activity implements OnClickListener,
         quotedMessagePresenter.processMessageToForward(message);
 
         if (!mSourceMessageProcessed) {
-            if (message.isSet(Flag.X_DOWNLOADED_PARTIAL) || !loadAttachments(message, 0)) {
+            if (message.isSet(Flag.X_DOWNLOADED_PARTIAL) || !attachmentPresenter.loadAttachments(message, 0)) {
                 mHandler.sendEmptyMessage(MSG_SKIPPED_ATTACHMENTS);
             }
         }
@@ -1682,7 +1283,7 @@ public class MessageCompose extends K9Activity implements OnClickListener,
         }
 
         if (!mSourceMessageProcessed) {
-            loadAttachments(message, 0);
+            attachmentPresenter.loadAttachments(message, 0);
         }
 
         // Decode the identity header when loading a draft.
@@ -1943,69 +1544,193 @@ public class MessageCompose extends K9Activity implements OnClickListener,
         }
     }
 
-    class Listener extends MessagingListener {
+    private MessageLoaderCallbacks messageLoaderCallbacks = new MessageLoaderCallbacks() {
         @Override
-        public void loadMessageForViewStarted(Account account, String folder, String uid) {
-            if (mMessageReference == null || !mMessageReference.getUid().equals(uid)) {
-                return;
-            }
-
-            mHandler.sendEmptyMessage(MSG_PROGRESS_ON);
+        public void onMessageDataLoadFinished(LocalMessage message) {
+            // nothing to do here, we don't care about message headers
         }
 
         @Override
-        public void loadMessageForViewFinished(Account account, String folder, String uid, LocalMessage message) {
-            if (mMessageReference == null || !mMessageReference.getUid().equals(uid)) {
-                return;
-            }
-
+        public void onMessageDataLoadFailed() {
             mHandler.sendEmptyMessage(MSG_PROGRESS_OFF);
+            Toast.makeText(MessageCompose.this, R.string.status_invalid_id_error, Toast.LENGTH_LONG).show();
         }
 
         @Override
-        public void loadMessageForViewBodyAvailable(Account account, String folder, String uid,
-                final LocalMessage message) {
-            if (mMessageReference == null || !mMessageReference.getUid().equals(uid)) {
-                return;
-            }
+        public void onMessageViewInfoLoadFinished(LocalMessage localMessage, MessageViewInfo messageViewInfo) {
+            mHandler.sendEmptyMessage(MSG_PROGRESS_OFF);
+            loadLocalMessageForDisplay(localMessage, mAction);
+        }
 
+        @Override
+        public void onMessageViewInfoLoadFailed(LocalMessage localMessage) {
+            mHandler.sendEmptyMessage(MSG_PROGRESS_OFF);
+            Toast.makeText(MessageCompose.this, R.string.status_invalid_id_error, Toast.LENGTH_LONG).show();
+        }
+
+        @Override
+        public void setLoadingProgress(int current, int max) {
+            // nvm - we don't have a progress bar
+        }
+
+        @Override
+        public void startIntentSenderForMessageLoaderHelper(IntentSender si, int requestCode, Intent fillIntent,
+                int flagsMask, int flagValues, int extraFlags) {
+            try {
+                requestCode |= REQUEST_MASK_LOADER_HELPER;
+                startIntentSenderForResult(si, requestCode, fillIntent, flagsMask, flagValues, extraFlags);
+            } catch (SendIntentException e) {
+                Log.e(K9.LOG_TAG, "Irrecoverable error calling PendingIntent!", e);
+            }
+        }
+
+        @Override
+        public void onDownloadErrorMessageNotFound() {
             runOnUiThread(new Runnable() {
                 @Override
                 public void run() {
-                    // We check to see if we've previously processed the source message since this
-                    // could be called when switching from HTML to text replies. If that happens, we
-                    // only want to update the UI with quoted text (which picks the appropriate
-                    // part).
-                    loadLocalMessageForDisplay(message, mAction);
+                    Toast.makeText(MessageCompose.this, R.string.status_invalid_id_error, Toast.LENGTH_LONG).show();
                 }
             });
         }
 
         @Override
-        public void loadMessageForViewFailed(Account account, String folder, String uid, Throwable t) {
-            if (mMessageReference == null || !mMessageReference.getUid().equals(uid)) {
-                return;
-            }
-            mHandler.sendEmptyMessage(MSG_PROGRESS_OFF);
-            // TODO show network error
+        public void onDownloadErrorNetworkError() {
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    Toast.makeText(MessageCompose.this, R.string.status_network_error, Toast.LENGTH_LONG).show();
+                }
+            });
         }
+    };
+
+    // TODO We miss callbacks for this listener if they happens while we are paused!
+    public MessagingListener messagingListener = new MessagingListener() {
 
         @Override
         public void messageUidChanged(Account account, String folder, String oldUid, String newUid) {
-            // Track UID changes of the source message
-            if (mMessageReference != null) {
-                final Account sourceAccount = Preferences.getPreferences(MessageCompose.this)
-                        .getAccount(mMessageReference.getAccountUuid());
-                final String sourceFolder = mMessageReference.getFolderName();
-                final String sourceMessageUid = mMessageReference.getUid();
+            if (mMessageReference == null) {
+                return;
+            }
 
-                if (account.equals(sourceAccount) && (folder.equals(sourceFolder))) {
-                    if (oldUid.equals(sourceMessageUid)) {
-                        mMessageReference = mMessageReference.withModifiedUid(newUid);
-                    }
-                }
+            Account sourceAccount = Preferences.getPreferences(MessageCompose.this)
+                    .getAccount(mMessageReference.getAccountUuid());
+            String sourceFolder = mMessageReference.getFolderName();
+            String sourceMessageUid = mMessageReference.getUid();
+
+            boolean changedMessageIsCurrent =
+                    account.equals(sourceAccount) && folder.equals(sourceFolder) && oldUid.equals(sourceMessageUid);
+            if (changedMessageIsCurrent) {
+                mMessageReference = mMessageReference.withModifiedUid(newUid);
             }
         }
-    }
+
+    };
+
+    AttachmentMvpView attachmentMvpView = new AttachmentMvpView() {
+        private HashMap<Uri,View> attachmentViews = new HashMap<>();
+
+        @Override
+        public void showWaitingForAttachmentDialog(WaitingAction waitingAction) {
+            String title;
+
+            switch (waitingAction) {
+                case SEND: {
+                    title = getString(R.string.fetching_attachment_dialog_title_send);
+                    break;
+                }
+                case SAVE: {
+                    title = getString(R.string.fetching_attachment_dialog_title_save);
+                    break;
+                }
+                default: {
+                    return;
+                }
+            }
+
+            ProgressDialogFragment fragment = ProgressDialogFragment.newInstance(title,
+                    getString(R.string.fetching_attachment_dialog_message));
+            fragment.show(getFragmentManager(), FRAGMENT_WAITING_FOR_ATTACHMENT);
+        }
+
+        @Override
+        public void dismissWaitingForAttachmentDialog() {
+            ProgressDialogFragment fragment = (ProgressDialogFragment)
+                    getFragmentManager().findFragmentByTag(FRAGMENT_WAITING_FOR_ATTACHMENT);
+
+            if (fragment != null) {
+                fragment.dismiss();
+            }
+        }
+
+        @Override
+        @SuppressLint("InlinedApi")
+        public void showPickAttachmentDialog(int requestCode) {
+            requestCode |= REQUEST_MASK_ATTACHMENT_PRESENTER;
+
+            Intent i = new Intent(Intent.ACTION_GET_CONTENT);
+            i.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+            i.addCategory(Intent.CATEGORY_OPENABLE);
+            i.setType("*/*");
+            isInSubActivity = true;
+
+            startActivityForResult(Intent.createChooser(i, null), requestCode);
+        }
+
+        @Override
+        public void addAttachmentView(final Attachment attachment) {
+            View view = getLayoutInflater().inflate(R.layout.message_compose_attachment, mAttachments, false);
+            attachmentViews.put(attachment.uri, view);
+
+            View deleteButton = view.findViewById(R.id.attachment_delete);
+            deleteButton.setOnClickListener(new OnClickListener() {
+                @Override
+                public void onClick(View view) {
+                    attachmentPresenter.onClickRemoveAttachment(attachment.uri);
+                }
+            });
+
+            updateAttachmentView(attachment);
+            mAttachments.addView(view);
+        }
+
+        @Override
+        public void updateAttachmentView(Attachment attachment) {
+            View view = attachmentViews.get(attachment.uri);
+            if (view == null) {
+                throw new IllegalArgumentException();
+            }
+
+            TextView nameView = (TextView) view.findViewById(R.id.attachment_name);
+            boolean hasMetadata = (attachment.state != Attachment.LoadingState.URI_ONLY);
+            if (hasMetadata) {
+                nameView.setText(attachment.name);
+            } else {
+                nameView.setText(R.string.loading_attachment);
+            }
+
+            View progressBar = view.findViewById(R.id.progressBar);
+            boolean isLoadingComplete = (attachment.state == Attachment.LoadingState.COMPLETE);
+            progressBar.setVisibility(isLoadingComplete ? View.GONE : View.VISIBLE);
+        }
+
+        @Override
+        public void removeAttachmentView(Attachment attachment) {
+            View view = attachmentViews.get(attachment.uri);
+            mAttachments.removeView(view);
+            attachmentViews.remove(attachment.uri);
+        }
+
+        @Override
+        public void performSendAfterChecks() {
+            MessageCompose.this.performSendAfterChecks();
+        }
+
+        @Override
+        public void performSaveAfterChecks() {
+            MessageCompose.this.performSaveAfterChecks();
+        }
+    };
 
 }

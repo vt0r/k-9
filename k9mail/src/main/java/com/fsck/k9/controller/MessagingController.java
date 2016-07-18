@@ -55,6 +55,7 @@ import com.fsck.k9.R;
 import com.fsck.k9.activity.MessageReference;
 import com.fsck.k9.activity.setup.AccountSetupCheckSettings.CheckDirection;
 import com.fsck.k9.cache.EmailProviderCache;
+import com.fsck.k9.helper.Contacts;
 import com.fsck.k9.mail.Address;
 import com.fsck.k9.mail.AuthenticationFailedException;
 import com.fsck.k9.mail.CertificateValidationException;
@@ -151,6 +152,7 @@ public class MessagingController implements Runnable {
 
     private final Context context;
     private final NotificationController notificationController;
+    private final Contacts contacts;
     private volatile boolean stopped = false;
 
     private static final Set<Flag> SYNC_FLAGS = EnumSet.of(Flag.SEEN, Flag.FLAGGED, Flag.ANSWERED, Flag.FORWARDED);
@@ -209,9 +211,11 @@ public class MessagingController implements Runnable {
 
 
     @VisibleForTesting
-    MessagingController(Context context, NotificationController notificationController) {
+    MessagingController(Context context, NotificationController notificationController, Contacts contacts) {
         this.context = context;
         this.notificationController = notificationController;
+        this.contacts = contacts;
+
         mThread = new Thread(this);
         mThread.setName("MessagingController");
         mThread.start();
@@ -231,7 +235,8 @@ public class MessagingController implements Runnable {
         if (inst == null) {
             Context appContext = context.getApplicationContext();
             NotificationController notificationController = NotificationController.newInstance(appContext);
-            inst = new MessagingController(appContext, notificationController);
+            Contacts contacts = Contacts.getInstance(context);
+            inst = new MessagingController(appContext, notificationController, contacts);
         }
         return inst;
     }
@@ -2696,28 +2701,28 @@ public class MessagingController implements Runnable {
         }
     }
 
-    public void loadMessagePartialForViewRemote(final Account account, final String folder,
+    public void loadMessageRemotePartial(final Account account, final String folder,
             final String uid, final MessagingListener listener) {
-        put("loadMessageForViewRemote", listener, new Runnable() {
+        put("loadMessageRemotePartial", listener, new Runnable() {
             @Override
             public void run() {
-                loadMessageForViewRemoteSynchronous(account, folder, uid, listener, true);
+                loadMessageRemoteSynchronous(account, folder, uid, listener, true);
             }
         });
     }
 
     //TODO: Fix the callback mess. See GH-782
-    public void loadMessageForViewRemote(final Account account, final String folder,
+    public void loadMessageRemote(final Account account, final String folder,
                                          final String uid, final MessagingListener listener) {
-        put("loadMessageForViewRemote", listener, new Runnable() {
+        put("loadMessageRemote", listener, new Runnable() {
             @Override
             public void run() {
-                loadMessageForViewRemoteSynchronous(account, folder, uid, listener, false);
+                loadMessageRemoteSynchronous(account, folder, uid, listener, false);
             }
         });
     }
 
-    public boolean loadMessageForViewRemoteSynchronous(final Account account, final String folder,
+    public boolean loadMessageRemoteSynchronous(final Account account, final String folder,
             final String uid, final MessagingListener listener, final boolean loadPartialFromSearch) {
         Folder remoteFolder = null;
         LocalFolder localFolder = null;
@@ -2750,16 +2755,7 @@ public class MessagingController implements Runnable {
                 message.setFlag(Flag.X_DOWNLOADED_PARTIAL, false);
             }*/
 
-            if (message.isSet(Flag.X_DOWNLOADED_FULL)) {
-                /*
-                 * If the message has been synchronized since we were called we'll
-                 * just hand it back cause it's ready to go.
-                 */
-                FetchProfile fp = new FetchProfile();
-                fp.add(FetchProfile.Item.ENVELOPE);
-                fp.add(FetchProfile.Item.BODY);
-                localFolder.fetch(Collections.singletonList(message), fp, null);
-            } else {
+            if (!message.isSet(Flag.X_DOWNLOADED_FULL)) {
                 /*
                  * At this point the message is not available, so we need to download it
                  * fully if possible.
@@ -2784,36 +2780,25 @@ public class MessagingController implements Runnable {
 
                 message = localFolder.getMessage(uid);
 
-                FetchProfile fp = new FetchProfile();
-                fp.add(FetchProfile.Item.ENVELOPE);
-                fp.add(FetchProfile.Item.BODY);
-                localFolder.fetch(Collections.singletonList(message), fp, null);
-
                 if (!loadPartialFromSearch) {
                     message.setFlag(Flag.X_DOWNLOADED_FULL, true);
                 }
+            }
 
-                // Mark that this message is now fully synched
-                if (account.isMarkMessageAsReadOnView()) {
-                    message.setFlag(Flag.SEEN, true);
-                }
+            // Mark that this message is now fully synched
+            if (account.isMarkMessageAsReadOnView()) {
+                message.setFlag(Flag.SEEN, true);
             }
 
             // now that we have the full message, refresh the headers
             for (MessagingListener l : getListeners(listener)) {
-                l.loadMessageForViewHeadersAvailable(account, folder, uid, message);
+                l.loadMessageRemoteFinished(account, folder, uid);
             }
 
-            for (MessagingListener l : getListeners(listener)) {
-                l.loadMessageForViewBodyAvailable(account, folder, uid, message);
-            }
-            for (MessagingListener l : getListeners(listener)) {
-                l.loadMessageForViewFinished(account, folder, uid, message);
-            }
             return true;
         } catch (Exception e) {
             for (MessagingListener l : getListeners(listener)) {
-                l.loadMessageForViewFailed(account, folder, uid, e);
+                l.loadMessageRemoteFailed(account, folder, uid, e);
             }
             notifyUserIfCertificateProblem(account, e, true);
             addErrorMessage(account, null, e);
@@ -2822,66 +2807,6 @@ public class MessagingController implements Runnable {
             closeFolder(remoteFolder);
             closeFolder(localFolder);
         }
-    }
-
-    public void loadMessageForView(final Account account, final String folder, final String uid,
-                                   final MessagingListener listener) {
-        for (MessagingListener l : getListeners(listener)) {
-            l.loadMessageForViewStarted(account, folder, uid);
-        }
-        threadPool.execute(new Runnable() {
-            @Override
-            public void run() {
-
-                try {
-                    LocalStore localStore = account.getLocalStore();
-                    LocalFolder localFolder = localStore.getFolder(folder);
-                    localFolder.open(Folder.OPEN_MODE_RW);
-
-                    LocalMessage message = localFolder.getMessage(uid);
-                    if (message == null
-                    || message.getId() == 0) {
-                        throw new IllegalArgumentException("Message not found: folder=" + folder + ", uid=" + uid);
-                    }
-                    // IMAP search results will usually need to be downloaded before viewing.
-                    // TODO: limit by account.getMaximumAutoDownloadMessageSize().
-                    if (!message.isSet(Flag.X_DOWNLOADED_FULL) &&
-                            !message.isSet(Flag.X_DOWNLOADED_PARTIAL)) {
-                        if (loadMessageForViewRemoteSynchronous(account, folder, uid, listener, true)) {
-                            markMessageAsReadOnView(account, message);
-                        }
-                        return;
-                    }
-
-
-                    for (MessagingListener l : getListeners(listener)) {
-                        l.loadMessageForViewHeadersAvailable(account, folder, uid, message);
-                    }
-
-                    FetchProfile fp = new FetchProfile();
-                    fp.add(FetchProfile.Item.ENVELOPE);
-                    fp.add(FetchProfile.Item.BODY);
-                    localFolder.fetch(Collections.singletonList(message), fp, null);
-                    localFolder.close();
-
-                    for (MessagingListener l : getListeners(listener)) {
-                        l.loadMessageForViewBodyAvailable(account, folder, uid, message);
-                    }
-
-                    for (MessagingListener l : getListeners(listener)) {
-                        l.loadMessageForViewFinished(account, folder, uid, message);
-                    }
-                    markMessageAsReadOnView(account, message);
-
-                } catch (Exception e) {
-                    for (MessagingListener l : getListeners(listener)) {
-                        l.loadMessageForViewFailed(account, folder, uid, e);
-                    }
-                    addErrorMessage(account, null, e);
-
-                }
-            }
-        });
     }
 
     public LocalMessage loadMessage(Account account, String folderName, String uid) throws MessagingException {
@@ -3876,64 +3801,52 @@ public class MessagingController implements Runnable {
         return (account.getRemoteStore() instanceof Pop3Store);
     }
 
-    public void sendAlternate(final Context context, Account account, Message message) {
+    public void sendAlternate(Context context, Account account, LocalMessage message) {
         if (K9.DEBUG)
-            Log.d(K9.LOG_TAG, "About to load message " + account.getDescription() + ":" + message.getFolder().getName()
+            Log.d(K9.LOG_TAG, "Got message " + account.getDescription() + ":" + message.getFolder()
                   + ":" + message.getUid() + " for sendAlternate");
 
-        loadMessageForView(account, message.getFolder().getName(),
-        message.getUid(), new MessagingListener() {
-            @Override
-            public void loadMessageForViewBodyAvailable(Account account, String folder, String uid,
-            LocalMessage message) {
-                if (K9.DEBUG)
-                    Log.d(K9.LOG_TAG, "Got message " + account.getDescription() + ":" + folder
-                          + ":" + message.getUid() + " for sendAlternate");
-
-                try {
-                    Intent msg = new Intent(Intent.ACTION_SEND);
-                    String quotedText = null;
-                    Part part = MimeUtility.findFirstPartByMimeType(message, "text/plain");
-                    if (part == null) {
-                        part = MimeUtility.findFirstPartByMimeType(message, "text/html");
-                    }
-                    if (part != null) {
-                        quotedText = MessageExtractor.getTextFromPart(part);
-                    }
-                    if (quotedText != null) {
-                        msg.putExtra(Intent.EXTRA_TEXT, quotedText);
-                    }
-                    msg.putExtra(Intent.EXTRA_SUBJECT, message.getSubject());
-
-                    Address[] from = message.getFrom();
-                    String[] senders = new String[from.length];
-                    for (int i = 0; i < from.length; i++) {
-                        senders[i] = from[i].toString();
-                    }
-                    msg.putExtra(Intents.Share.EXTRA_FROM, senders);
-
-                    Address[] to = message.getRecipients(RecipientType.TO);
-                    String[] recipientsTo = new String[to.length];
-                    for (int i = 0; i < to.length; i++) {
-                        recipientsTo[i] = to[i].toString();
-                    }
-                    msg.putExtra(Intent.EXTRA_EMAIL, recipientsTo);
-
-                    Address[] cc = message.getRecipients(RecipientType.CC);
-                    String[] recipientsCc = new String[cc.length];
-                    for (int i = 0; i < cc.length; i++) {
-                        recipientsCc[i] = cc[i].toString();
-                    }
-                    msg.putExtra(Intent.EXTRA_CC, recipientsCc);
-
-                    msg.setType("text/plain");
-                    context.startActivity(Intent.createChooser(msg, context.getString(R.string.send_alternate_chooser_title)));
-                } catch (MessagingException me) {
-                    Log.e(K9.LOG_TAG, "Unable to send email through alternate program", me);
-                }
+        try {
+            Intent msg = new Intent(Intent.ACTION_SEND);
+            String quotedText = null;
+            Part part = MimeUtility.findFirstPartByMimeType(message, "text/plain");
+            if (part == null) {
+                part = MimeUtility.findFirstPartByMimeType(message, "text/html");
             }
-        });
+            if (part != null) {
+                quotedText = MessageExtractor.getTextFromPart(part);
+            }
+            if (quotedText != null) {
+                msg.putExtra(Intent.EXTRA_TEXT, quotedText);
+            }
+            msg.putExtra(Intent.EXTRA_SUBJECT, message.getSubject());
 
+            Address[] from = message.getFrom();
+            String[] senders = new String[from.length];
+            for (int i = 0; i < from.length; i++) {
+                senders[i] = from[i].toString();
+            }
+            msg.putExtra(Intents.Share.EXTRA_FROM, senders);
+
+            Address[] to = message.getRecipients(RecipientType.TO);
+            String[] recipientsTo = new String[to.length];
+            for (int i = 0; i < to.length; i++) {
+                recipientsTo[i] = to[i].toString();
+            }
+            msg.putExtra(Intent.EXTRA_EMAIL, recipientsTo);
+
+            Address[] cc = message.getRecipients(RecipientType.CC);
+            String[] recipientsCc = new String[cc.length];
+            for (int i = 0; i < cc.length; i++) {
+                recipientsCc[i] = cc[i].toString();
+            }
+            msg.putExtra(Intent.EXTRA_CC, recipientsCc);
+
+            msg.setType("text/plain");
+            context.startActivity(Intent.createChooser(msg, context.getString(R.string.send_alternate_chooser_title)));
+        } catch (MessagingException me) {
+            Log.e(K9.LOG_TAG, "Unable to send email through alternate program", me);
+        }
     }
 
     /**
@@ -4314,6 +4227,10 @@ public class MessagingController implements Runnable {
         // Don't notify if the sender address matches one of our identities and the user chose not
         // to be notified for such messages.
         if (account.isAnIdentity(message.getFrom()) && !account.isNotifySelfNewMail()) {
+            return false;
+        }
+
+        if (account.isNotifyContactsMailOnly() && !contacts.isAnyInContacts(message.getFrom())) {
             return false;
         }
 

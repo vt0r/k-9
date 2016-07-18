@@ -24,6 +24,7 @@ import com.fsck.k9.R;
 import com.fsck.k9.activity.compose.ComposeCryptoStatus.AttachErrorState;
 import com.fsck.k9.activity.compose.ComposeCryptoStatus.ComposeCryptoStatusBuilder;
 import com.fsck.k9.activity.compose.ComposeCryptoStatus.SendErrorState;
+import com.fsck.k9.activity.misc.Attachment;
 import com.fsck.k9.helper.Contacts;
 import com.fsck.k9.helper.MailTo;
 import com.fsck.k9.helper.ReplyToParser;
@@ -475,7 +476,7 @@ public class RecipientPresenter implements PermissionPingCallback {
         recipientMvpView.showContactPicker(requestCode);
     }
 
-    public void onActivityResult(int resultCode, int requestCode, Intent data) {
+    public void onActivityResult(int requestCode, int resultCode, Intent data) {
         switch (requestCode) {
             case CONTACT_PICKER_TO:
             case CONTACT_PICKER_CC:

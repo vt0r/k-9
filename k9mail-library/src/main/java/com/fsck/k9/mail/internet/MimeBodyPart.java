@@ -11,6 +11,8 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 
+import android.support.annotation.NonNull;
+
 import org.apache.james.mime4j.util.MimeUtil;
 
 /**
@@ -61,6 +63,7 @@ public class MimeBodyPart extends BodyPart {
         mHeader.setHeader(name, value);
     }
 
+    @NonNull
     @Override
     public String[] getHeader(String name) throws MessagingException {
         return mHeader.getHeader(name);
@@ -92,11 +95,11 @@ public class MimeBodyPart extends BodyPart {
     @Override
     public String getContentType() {
         String contentType = getFirstHeader(MimeHeader.HEADER_CONTENT_TYPE);
-        return (contentType == null) ? "text/plain" : contentType;
+        return (contentType == null) ? "text/plain" : MimeUtility.unfoldAndDecode(contentType);
     }
 
     @Override
-    public String getDisposition() throws MessagingException {
+    public String getDisposition() {
         return getFirstHeader(MimeHeader.HEADER_CONTENT_DISPOSITION);
     }
 
@@ -121,7 +124,7 @@ public class MimeBodyPart extends BodyPart {
     }
 
     @Override
-    public boolean isMimeType(String mimeType) throws MessagingException {
+    public boolean isMimeType(String mimeType) {
         return getMimeType().equalsIgnoreCase(mimeType);
     }
 

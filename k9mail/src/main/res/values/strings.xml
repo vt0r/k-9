@@ -185,6 +185,7 @@ Please submit bug reports, contribute new features and ask questions at
     <string name="status_loading_more">Loading messages\u2026</string>
     <string name="status_network_error">Connection error</string>
     <string name="status_invalid_id_error">Message not found</string>
+    <string name="status_loading_error">Message loading error</string>
 
     <string name="status_loading_more_failed">Retry loading more messages</string>
 
@@ -532,6 +533,8 @@ Please submit bug reports, contribute new features and ask questions at
     <string name="account_settings_notify_sync_summary">Notify in status bar while mail is checked</string>
     <string name="account_settings_notify_self_label">Include outgoing mail</string>
     <string name="account_settings_notify_self_summary">Show a notification for messages I sent</string>
+    <string name="account_notify_contacts_mail_only_label">Contacts only</string>
+    <string name="account_notify_contacts_mail_only_summary">Show notifications only for messages from known contacts</string>
     <string name="account_settings_notification_opens_unread_label">Notification opens unread messages</string>
     <string name="account_settings_notification_opens_unread_summary">Searches for unread messages when Notification is opened</string>
     <string name="account_settings_mark_message_as_read_on_view_label">Mark as read when opened</string>
@@ -1140,7 +1143,6 @@ Please submit bug reports, contribute new features and ask questions at
     <string name="address_type_work">Work</string>
     <string name="address_type_other">Other</string>
     <string name="address_type_mobile">Mobile</string>
-    <string name="warn_search_disabled">Search in message bodies is disabled in this development version!</string>
     <string name="compose_error_no_draft_folder">No Drafts folder configured for this account!</string>
     <string name="compose_not_saving_unencrypted">Draft NOT saved without encryption!</string>
     <string name="compose_error_pgp_error">Error with OpenPGP provider. Check your settings!</string>
@@ -1163,5 +1165,49 @@ Please submit bug reports, contribute new features and ask questions at
     <string name="openpgp_inline_ok">Got it!</string>
     <string name="openpgp_inline_disable">Disable</string>
     <string name="openpgp_inline_keep_enabled">Keep Enabled</string>
+
+    <string name="crypto_msg_disabled">Message is not encrypted</string>
+
+    <string name="crypto_msg_encrypted_error">Message is encrypted, but there was a decryption error.</string>
+    <string name="crypto_msg_signed_error">Message is signed, but the signature could not be verified.</string>
+    <string name="crypto_msg_unsupported_encrypted">Message is encrypted, but in an unsupported format.</string>
+    <string name="crypto_msg_unsupported_signed">Message is signed, but in an unsupported format.</string>
+    <string name="crypto_msg_incomplete_encrypted">Message is encrypted, but must be fully downloaded for decryption.</string>
+    <string name="crypto_msg_cancelled">Message is encrypted, but decryption was cancelled.</string>
+
+    <string name="crypto_msg_signed_unencrypted">Message is signed, but not encrypted.</string>
+    <string name="crypto_msg_encrypted_unsigned">Message was encrypted, but not signed.</string>
+
+    <string name="crypto_msg_sign_unknown">Signature made by unknown key.</string>
+    <string name="crypto_msg_sign_verified">Signature made by trusted key.</string>
+    <string name="crypto_msg_sign_unverified">Signature made by untrusted key!</string>
+    <string name="crypto_msg_sign_error">Signature contained an error.</string>
+    <string name="crypto_msg_sign_mismatch">Signature made by wrong key.</string>
+    <string name="crypto_msg_sign_expired">Signature made by expired key.</string>
+    <string name="crypto_msg_sign_revoked">Signature made by revoked key.</string>
+    <string name="crypto_msg_sign_insecure">Signature made by insecure key.</string>
+    <string name="crypto_msg_sign_incomplete">Message must be fully downloaded to verify its signature.</string>
+
+    <string name="crypto_msg_signed_encrypted">Message is signed and encrypted.</string>
+    <string name="crypto_msg_unsigned_encrypted">There is no signature, this message may have been intercepted.</string>
+
+
+    <string name="crypto_info_ok">OK</string>
+    <string name="crypto_info_view_key">View Signer</string>
+    <string name="locked_attach_unlock">Unlock</string>
+    <string name="locked_attach_unsigned">This part was not signed, and may be insecure.</string>
+    <string name="locked_attach_unencrypted">This part was not encrypted, and may be insecure.</string>
+    <string name="locked_attach_title">Unprotected Attachment</string>
+    <string name="message_progress_text">Loading…</string>
+    <string name="messageview_decrypt_cancelled">Decryption was cancelled.</string>
+    <string name="messageview_decrypt_retry">Retry</string>
+    <string name="messageview_decrypt_incomplete">Encrypted message must be downloaded for decryption.</string>
+    <string name="messageview_crypto_error_title">Error decrypting email</string>
+
+    <string name="messageview_crypto_warning_title">Security Warning</string>
+    <string name="messageview_crypto_warning_revoked">This message was signed by a <b>revoked key!</b></string>
+    <string name="messageview_crypto_warning_expired">This message was signed by an <b>expired key!</b></string>
+    <string name="messageview_crypto_warning_insecure">This message was signed by an <b>insecure key!</b></string>
+    <string name="messageview_crypto_warning_error">There was an <b>error in this message\'s signature!</b></string>
 
 </resources>

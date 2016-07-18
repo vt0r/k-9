@@ -15,6 +15,8 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 
+import android.support.annotation.NonNull;
+
 import org.apache.commons.io.IOUtils;
 import org.apache.james.mime4j.MimeException;
 import org.apache.james.mime4j.dom.field.DateTimeField;
@@ -164,12 +166,12 @@ public class MimeMessage extends Message {
     @Override
     public String getContentType() {
         String contentType = getFirstHeader(MimeHeader.HEADER_CONTENT_TYPE);
-        return (contentType == null) ? "text/plain" : contentType;
+        return (contentType == null) ? "text/plain" : MimeUtility.unfoldAndDecode(contentType);
     }
 
     @Override
-    public String getDisposition() throws MessagingException {
-        return getFirstHeader(MimeHeader.HEADER_CONTENT_DISPOSITION);
+    public String getDisposition() {
+        return MimeUtility.unfoldAndDecode(getFirstHeader(MimeHeader.HEADER_CONTENT_DISPOSITION));
     }
 
     @Override
@@ -183,7 +185,7 @@ public class MimeMessage extends Message {
     }
 
     @Override
-    public boolean isMimeType(String mimeType) throws MessagingException {
+    public boolean isMimeType(String mimeType) {
         return getMimeType().equalsIgnoreCase(mimeType);
     }
 
@@ -422,6 +424,7 @@ public class MimeMessage extends Message {
         mHeader.setHeader(name, value);
     }
 
+    @NonNull
     @Override
     public String[] getHeader(String name) throws MessagingException {
         return mHeader.getHeader(name);
