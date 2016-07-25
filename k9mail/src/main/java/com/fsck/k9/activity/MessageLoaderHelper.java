@@ -9,6 +9,7 @@ import android.content.Intent;
 import android.content.IntentSender;
 import android.content.Loader;
 import android.os.Bundle;
+import android.os.Parcelable;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.support.annotation.UiThread;
@@ -28,6 +29,7 @@ import com.fsck.k9.ui.crypto.MessageCryptoCallback;
 import com.fsck.k9.ui.crypto.MessageCryptoHelper;
 import com.fsck.k9.ui.message.LocalMessageExtractorLoader;
 import com.fsck.k9.ui.message.LocalMessageLoader;
+import org.openintents.openpgp.OpenPgpDecryptionResult;
 
 
 /** This class is responsible for loading a message start to finish, and
@@ -69,11 +71,11 @@ public class MessageLoaderHelper {
     private static final int DECODE_MESSAGE_LOADER_ID = 2;
 
 
-    // injected state
-    private final Context context;
-    private final FragmentManager fragmentManager;
-    private final LoaderManager loaderManager;
-    @Nullable // may be cleared
+    // injected state - all of this may be cleared to avoid data leakage!
+    private Context context;
+    private FragmentManager fragmentManager;
+    private LoaderManager loaderManager;
+    @Nullable // make this explicitly nullable, make sure to cancel/ignore any operation if this is null
     private MessageLoaderCallbacks callback;
 
 
@@ -83,6 +85,7 @@ public class MessageLoaderHelper {
 
     private LocalMessage localMessage;
     private MessageCryptoAnnotations messageCryptoAnnotations;
+    private OpenPgpDecryptionResult cachedDecryptionResult;
 
     private MessageCryptoHelper messageCryptoHelper;
 
@@ -99,9 +102,17 @@ public class MessageLoaderHelper {
     // public interface
 
     @UiThread
-    public void asyncStartOrResumeLoadingMessage(MessageReference messageReference) {
+    public void asyncStartOrResumeLoadingMessage(MessageReference messageReference, Parcelable cachedDecryptionResult) {
         this.messageReference = messageReference;
         this.account = Preferences.getPreferences(context).getAccount(messageReference.getAccountUuid());
+
+        if (cachedDecryptionResult != null) {
+            if (cachedDecryptionResult instanceof OpenPgpDecryptionResult) {
+                this.cachedDecryptionResult = (OpenPgpDecryptionResult) cachedDecryptionResult;
+            } else {
+                Log.e(K9.LOG_TAG, "Got decryption result of unknown type - ignoring");
+            }
+        }
 
         startOrResumeLocalMessageLoader();
     }
@@ -126,6 +137,9 @@ public class MessageLoaderHelper {
         }
 
         callback = null;
+        context = null;
+        fragmentManager = null;
+        loaderManager = null;
     }
 
     /** Prevents future callbacks, but retains loading state to pick up from in a call to
@@ -137,14 +151,13 @@ public class MessageLoaderHelper {
         }
 
         callback = null;
+        context = null;
+        fragmentManager = null;
+        loaderManager = null;
     }
 
     @UiThread
     public void downloadCompleteMessage() {
-        if (localMessage.isSet(Flag.X_DOWNLOADED_FULL)) {
-            return;
-        }
-
         startDownloadingMessageBody(true);
     }
 
@@ -180,7 +193,9 @@ public class MessageLoaderHelper {
 
         callback.onMessageDataLoadFinished(localMessage);
 
-        if (localMessage.isBodyMissing()) {
+        boolean messageIncomplete =
+                !localMessage.isSet(Flag.X_DOWNLOADED_FULL) && !localMessage.isSet(Flag.X_DOWNLOADED_PARTIAL);
+        if (messageIncomplete) {
             startDownloadingMessageBody(false);
             return;
         }
@@ -248,7 +263,8 @@ public class MessageLoaderHelper {
             messageCryptoHelper = new MessageCryptoHelper(context, account.getOpenPgpProvider());
             retainCryptoHelperFragment.setData(messageCryptoHelper);
         }
-        messageCryptoHelper.asyncStartOrResumeProcessingMessage(localMessage, messageCryptoCallback);
+        messageCryptoHelper.asyncStartOrResumeProcessingMessage(
+                localMessage, messageCryptoCallback, cachedDecryptionResult);
     }
 
     private void cancelAndClearCryptoOperation() {
@@ -322,11 +338,18 @@ public class MessageLoaderHelper {
         }
 
         if (messageViewInfo == null) {
-            callback.onMessageViewInfoLoadFailed(localMessage);
+            messageViewInfo = createErrorStateMessageViewInfo();
+            callback.onMessageViewInfoLoadFailed(messageViewInfo);
             return;
         }
 
-        callback.onMessageViewInfoLoadFinished(localMessage, messageViewInfo);
+        callback.onMessageViewInfoLoadFinished(messageViewInfo);
+    }
+
+    @NonNull
+    private MessageViewInfo createErrorStateMessageViewInfo() {
+        boolean isMessageIncomplete = !localMessage.isSet(Flag.X_DOWNLOADED_FULL);
+        return MessageViewInfo.createWithErrorState(localMessage, isMessageIncomplete);
     }
 
     private void cancelAndClearDecodeLoader() {
@@ -399,6 +422,9 @@ public class MessageLoaderHelper {
     MessagingListener downloadMessageListener = new MessagingListener() {
         @Override
         public void loadMessageRemoteFinished(Account account, String folder, String uid) {
+            if (messageReference.equals(account.getUuid(), folder, uid)) {
+                return;
+            }
             onMessageDownloadFinished();
         }
 
@@ -415,8 +441,8 @@ public class MessageLoaderHelper {
         void onMessageDataLoadFinished(LocalMessage message);
         void onMessageDataLoadFailed();
 
-        void onMessageViewInfoLoadFinished(LocalMessage localMessage, MessageViewInfo messageViewInfo);
-        void onMessageViewInfoLoadFailed(LocalMessage localMessage);
+        void onMessageViewInfoLoadFinished(MessageViewInfo messageViewInfo);
+        void onMessageViewInfoLoadFailed(MessageViewInfo messageViewInfo);
 
         void setLoadingProgress(int current, int max);
 

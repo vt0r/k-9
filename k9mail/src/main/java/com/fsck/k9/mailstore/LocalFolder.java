@@ -53,6 +53,7 @@ import com.fsck.k9.mail.internet.SizeAware;
 import com.fsck.k9.mail.message.MessageHeaderParser;
 import com.fsck.k9.mailstore.LockableDatabase.DbCallback;
 import com.fsck.k9.mailstore.LockableDatabase.WrappedException;
+import com.fsck.k9.message.extractors.AttachmentCounter;
 import com.fsck.k9.message.extractors.AttachmentInfoExtractor;
 import com.fsck.k9.message.extractors.MessageFulltextCreator;
 import com.fsck.k9.message.extractors.MessagePreviewCreator;
@@ -719,7 +720,7 @@ public class LocalFolder extends Folder<LocalMessage> implements Serializable {
         // TODO might want to do that at a later point?
         // String displayName = cursor.getString(5);
         // int type = cursor.getInt(1);
-        // boolean firstClassAttachment = (type != MessagePartType.HIDDEN_ATTACHMENT);
+        // boolean inlineAttachment = (type == MessagePartType.HIDDEN_ATTACHMENT);
 
         final Part part;
         if (id == message.getMessagePartId()) {
@@ -767,8 +768,10 @@ public class LocalFolder extends Folder<LocalMessage> implements Serializable {
             String encoding = cursor.getString(7);
 
             File file = localStore.getAttachmentFile(Long.toString(id));
-            Body body = new FileBackedBody(file, encoding);
-            part.setBody(body);
+            if (file.exists()) {
+                Body body = new FileBackedBody(file, encoding);
+                part.setBody(body);
+            }
         }
     }
 

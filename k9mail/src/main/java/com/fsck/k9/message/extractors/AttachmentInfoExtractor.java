@@ -11,6 +11,7 @@ import android.net.Uri;
 import android.support.annotation.Nullable;
 import android.support.annotation.VisibleForTesting;
 import android.util.Log;
+import android.support.annotation.WorkerThread;
 
 import com.fsck.k9.Globals;
 import com.fsck.k9.K9;
@@ -20,8 +21,9 @@ import com.fsck.k9.mail.Part;
 import com.fsck.k9.mail.internet.MimeHeader;
 import com.fsck.k9.mail.internet.MimeUtility;
 import com.fsck.k9.mailstore.AttachmentViewInfo;
-import com.fsck.k9.mailstore.LocalPart;
 import com.fsck.k9.mailstore.DeferredFileBody;
+import com.fsck.k9.mailstore.LocalMessage;
+import com.fsck.k9.mailstore.LocalPart;
 import com.fsck.k9.provider.AttachmentProvider;
 import com.fsck.k9.provider.DecryptedFileProvider;
 
@@ -40,16 +42,22 @@ public class AttachmentInfoExtractor {
         this.context = context;
     }
 
-    public List<AttachmentViewInfo> extractAttachmentInfos(List<Part> attachmentParts) throws MessagingException {
+    @WorkerThread
+    public List<AttachmentViewInfo> extractAttachmentInfoForView(List<Part> attachmentParts)
+            throws MessagingException {
 
         List<AttachmentViewInfo> attachments = new ArrayList<>();
         for (Part part : attachmentParts) {
-            attachments.add(extractAttachmentInfo(part));
+            AttachmentViewInfo attachmentViewInfo = extractAttachmentInfo(part);
+            if (!attachmentViewInfo.inlineAttachment) {
+                attachments.add(attachmentViewInfo);
+            }
         }
 
         return attachments;
     }
 
+    @WorkerThread
     public AttachmentViewInfo extractAttachmentInfo(Part part) throws MessagingException {
         Uri uri;
         long size;
@@ -58,6 +66,12 @@ public class AttachmentInfoExtractor {
             String accountUuid = localPart.getAccountUuid();
             long messagePartId = localPart.getId();
             size = localPart.getSize();
+            uri = AttachmentProvider.getAttachmentUri(accountUuid, messagePartId);
+        } else if (part instanceof LocalMessage) {
+            LocalMessage localMessage = (LocalMessage) part;
+            String accountUuid = localMessage.getAccount().getUuid();
+            long messagePartId = localMessage.getMessagePartId();
+            size = localMessage.getSize();
             uri = AttachmentProvider.getAttachmentUri(accountUuid, messagePartId);
         } else {
             Body body = part.getBody();
@@ -93,8 +107,9 @@ public class AttachmentInfoExtractor {
         return extractAttachmentInfo(part, Uri.EMPTY, AttachmentViewInfo.UNKNOWN_SIZE);
     }
 
+    @WorkerThread
     private AttachmentViewInfo extractAttachmentInfo(Part part, Uri uri, long size) throws MessagingException {
-        boolean firstClassAttachment = true;
+        boolean inlineAttachment = false;
 
         String mimeType = part.getMimeType();
         String contentTypeHeader = MimeUtility.unfoldAndDecode(part.getContentType());
@@ -106,7 +121,6 @@ public class AttachmentInfoExtractor {
         }
 
         if (name == null) {
-            firstClassAttachment = false;
             String extension = null;
             if (mimeType != null) {
                 extension = MimeUtility.getExtensionByMimeType(mimeType);
@@ -120,14 +134,15 @@ public class AttachmentInfoExtractor {
         if (contentDisposition != null &&
                 MimeUtility.getHeaderParameter(contentDisposition, null).matches("^(?i:inline)") &&
                 part.getHeader(MimeHeader.HEADER_CONTENT_ID).length > 0) {
-            firstClassAttachment = false;
+            inlineAttachment = true;
         }
 
         long attachmentSize = extractAttachmentSize(contentDisposition, size);
 
-        return new AttachmentViewInfo(mimeType, name, attachmentSize, uri, firstClassAttachment, part);
+        return new AttachmentViewInfo(mimeType, name, attachmentSize, uri, inlineAttachment, part);
     }
 
+    @WorkerThread
     private long extractAttachmentSize(String contentDisposition, long size) {
         if (size != AttachmentViewInfo.UNKNOWN_SIZE) {
             return size;
