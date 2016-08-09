@@ -25,10 +25,12 @@ import java.util.UUID;
 import android.content.ContentValues;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
+import android.support.annotation.NonNull;
 import android.util.Log;
 
 import com.fsck.k9.Account;
 import com.fsck.k9.K9;
+import com.fsck.k9.activity.MessageReference;
 import com.fsck.k9.activity.Search;
 import com.fsck.k9.helper.Utility;
 import com.fsck.k9.mail.Address;
@@ -660,7 +662,6 @@ public class LocalFolder extends Folder<LocalMessage> implements Serializable {
                                 LocalMessage localMessage = (LocalMessage) message;
 
                                 loadMessageParts(db, localMessage);
-                                localMessage.loadHeadersIfNecessary();
                             }
                         }
                     } catch (MessagingException e) {
@@ -793,25 +794,6 @@ public class LocalFolder extends Folder<LocalMessage> implements Serializable {
         throw new IllegalStateException("Not implemented");
     }
 
-    void populateHeaders(final LocalMessage message) throws MessagingException {
-        this.localStore.database.execute(false, new DbCallback<Void>() {
-            @Override
-            public Void doDbWork(final SQLiteDatabase db) throws WrappedException, MessagingException {
-                Cursor cursor = db.query("message_parts", new String[] { "header" }, "id = ?",
-                        new String[] { Long.toString(message.getMessagePartId()) }, null, null, null);
-                try {
-                    if (cursor.moveToFirst()) {
-                        byte[] header = cursor.getBlob(0);
-                        parseHeaderBytes(message, header);
-                    }
-                } finally {
-                    Utility.closeQuietly(cursor);
-                }
-                return null;
-            }
-        });
-    }
-
     public String getMessageUidById(final long id) throws MessagingException {
         try {
             return this.localStore.database.execute(false, new DbCallback<String>() {
@@ -858,6 +840,7 @@ public class LocalFolder extends Folder<LocalMessage> implements Serializable {
                                     "SELECT " +
                                     LocalStore.GET_MESSAGES_COLS +
                                     "FROM messages " +
+                                    "LEFT JOIN message_parts ON (message_parts.id = messages.message_part_id) " +
                                     "LEFT JOIN threads ON (threads.message_id = messages.id) " +
                                     "WHERE uid = ? AND folder_id = ?",
                                     new String[] { message.getUid(), Long.toString(mFolderId) });
@@ -895,6 +878,7 @@ public class LocalFolder extends Folder<LocalMessage> implements Serializable {
                         return LocalFolder.this.localStore.getMessages(listener, LocalFolder.this,
                                 "SELECT " + LocalStore.GET_MESSAGES_COLS +
                                 "FROM messages " +
+                                "LEFT JOIN message_parts ON (message_parts.id = messages.message_part_id) " +
                                 "LEFT JOIN threads ON (threads.message_id = messages.id) " +
                                 "WHERE empty = 0 AND " +
                                 (includeDeleted ? "" : "deleted = 0 AND ") +
@@ -910,15 +894,35 @@ public class LocalFolder extends Folder<LocalMessage> implements Serializable {
         }
     }
 
-    public List<LocalMessage> getMessages(String[] uids, MessageRetrievalListener<LocalMessage> listener)
-            throws MessagingException {
+    public List<LocalMessage> getMessagesByUids(@NonNull List<String> uids) throws MessagingException {
         open(OPEN_MODE_RW);
-        if (uids == null) {
-            return getMessages(listener);
-        }
         List<LocalMessage> messages = new ArrayList<>();
         for (String uid : uids) {
             LocalMessage message = getMessage(uid);
+            if (message != null) {
+                messages.add(message);
+            }
+        }
+        return messages;
+    }
+
+    public List<LocalMessage> getMessagesByReference(@NonNull List<MessageReference> messageReferences)
+            throws MessagingException {
+        open(OPEN_MODE_RW);
+
+        String accountUuid = getAccountUuid();
+        String folderName = getName();
+
+        List<LocalMessage> messages = new ArrayList<>();
+        for (MessageReference messageReference : messageReferences) {
+            if (!accountUuid.equals(messageReference.getAccountUuid())) {
+                throw new IllegalArgumentException("all message references must belong to this Account!");
+            }
+            if (!folderName.equals(messageReference.getFolderName())) {
+                throw new IllegalArgumentException("all message references must belong to this LocalFolder!");
+            }
+
+            LocalMessage message = getMessage(messageReference.getUid());
             if (message != null) {
                 messages.add(message);
             }
@@ -1525,7 +1529,7 @@ public class LocalFolder extends Folder<LocalMessage> implements Serializable {
         return output.toByteArray();
     }
 
-    private String getTransferEncoding(Part part) throws MessagingException {
+    private String getTransferEncoding(Part part) {
         String[] contentTransferEncoding = part.getHeader(MimeHeader.HEADER_CONTENT_TRANSFER_ENCODING);
         if (contentTransferEncoding.length > 0) {
             return contentTransferEncoding[0].toLowerCase(Locale.US);
@@ -1662,6 +1666,7 @@ public class LocalFolder extends Folder<LocalMessage> implements Serializable {
         List<? extends Message> messages  = this.localStore.getMessages(null, this,
                 "SELECT " + LocalStore.GET_MESSAGES_COLS +
                 "FROM messages " +
+                "LEFT JOIN message_parts ON (message_parts.id = messages.message_part_id) " +
                 "LEFT JOIN threads ON (threads.message_id = messages.id) " +
                 "WHERE empty = 0 AND (folder_id = ? and date < ?)",
                 new String[] { Long.toString(mFolderId), Long.toString(cutoff) });

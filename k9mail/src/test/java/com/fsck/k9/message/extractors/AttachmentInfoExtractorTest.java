@@ -6,7 +6,9 @@ import android.net.Uri;
 import android.support.annotation.Nullable;
 
 import com.fsck.k9.mail.Part;
+import com.fsck.k9.mail.internet.MimeBodyPart;
 import com.fsck.k9.mail.internet.MimeHeader;
+import com.fsck.k9.mail.internet.TextBody;
 import com.fsck.k9.mailstore.AttachmentViewInfo;
 import com.fsck.k9.mailstore.LocalBodyPart;
 import com.fsck.k9.mailstore.DeferredFileBody;
@@ -34,7 +36,7 @@ public class AttachmentInfoExtractorTest {
     public static final long TEST_SIZE = 123L;
     public static final String TEST_ACCOUNT_UUID = "uuid";
     public static final long TEST_ID = 234L;
-    public static final String[] TEST_CONTENT_ID = new String[] { "test-content-id" };
+    public static final String TEST_CONTENT_ID = "test-content-id";
 
 
     private AttachmentInfoExtractor attachmentInfoExtractor;
@@ -56,11 +58,8 @@ public class AttachmentInfoExtractorTest {
 
     @Test
     public void extractInfo__fromLocalBodyPart__shouldReturnProvidedValues() throws Exception {
-        LocalBodyPart part = mock(LocalBodyPart.class);
-        when(part.getId()).thenReturn(TEST_ID);
-        when(part.getMimeType()).thenReturn(TEST_MIME_TYPE);
-        when(part.getSize()).thenReturn(TEST_SIZE);
-        when(part.getAccountUuid()).thenReturn(TEST_ACCOUNT_UUID);
+        LocalBodyPart part = new LocalBodyPart(TEST_ACCOUNT_UUID, null, TEST_ID, TEST_SIZE);
+        part.setHeader(MimeHeader.HEADER_CONTENT_TYPE, TEST_MIME_TYPE);
 
         AttachmentViewInfo attachmentViewInfo = attachmentInfoExtractor.extractAttachmentInfo(part);
 
@@ -71,21 +70,21 @@ public class AttachmentInfoExtractorTest {
 
     @Test
     public void extractInfoForDb__withNoHeaders__shouldReturnEmptyValues() throws Exception {
-        Part part = mock(Part.class);
+        MimeBodyPart part = new MimeBodyPart();
 
         AttachmentViewInfo attachmentViewInfo = attachmentInfoExtractor.extractAttachmentInfoForDatabase(part);
 
         assertEquals(Uri.EMPTY, attachmentViewInfo.uri);
         assertEquals(AttachmentViewInfo.UNKNOWN_SIZE, attachmentViewInfo.size);
-        assertEquals("noname", attachmentViewInfo.displayName);
-        assertNull(attachmentViewInfo.mimeType);
+        assertEquals("noname.txt", attachmentViewInfo.displayName);
+        assertEquals("text/plain", attachmentViewInfo.mimeType);
         assertFalse(attachmentViewInfo.inlineAttachment);
     }
 
     @Test
     public void extractInfoForDb__withTextMimeType__shouldReturnTxtExtension() throws Exception {
-        Part part = mock(Part.class);
-        when(part.getMimeType()).thenReturn("text/plain");
+        MimeBodyPart part = new MimeBodyPart();
+        part.setHeader(MimeHeader.HEADER_CONTENT_TYPE, "text/plain");
 
         AttachmentViewInfo attachmentViewInfo = attachmentInfoExtractor.extractAttachmentInfoForDatabase(part);
 
@@ -96,9 +95,8 @@ public class AttachmentInfoExtractorTest {
 
     @Test
     public void extractInfoForDb__withContentTypeAndName__shouldReturnNamedAttachment() throws Exception {
-        Part part = mock(Part.class);
-        when(part.getMimeType()).thenReturn(TEST_MIME_TYPE);
-        when(part.getContentType()).thenReturn(TEST_MIME_TYPE + "; name=\"filename.ext\"");
+        MimeBodyPart part = new MimeBodyPart();
+        part.setHeader(MimeHeader.HEADER_CONTENT_TYPE, TEST_MIME_TYPE + "; name=\"filename.ext\"");
 
         AttachmentViewInfo attachmentViewInfo = attachmentInfoExtractor.extractAttachmentInfoForDatabase(part);
 
@@ -110,8 +108,9 @@ public class AttachmentInfoExtractorTest {
 
     @Test
     public void extractInfoForDb__withContentTypeAndEncodedWordName__shouldReturnDecodedName() throws Exception {
-        Part part = mock(Part.class);
-        when(part.getContentType()).thenReturn(TEST_MIME_TYPE + "; name=\"=?ISO-8859-1?Q?Sm=F8rrebr=F8d?=\"");
+        Part part = new MimeBodyPart();
+        part.addRawHeader(MimeHeader.HEADER_CONTENT_TYPE,
+                MimeHeader.HEADER_CONTENT_TYPE + ": " +TEST_MIME_TYPE + "; name=\"=?ISO-8859-1?Q?Sm=F8rrebr=F8d?=\"");
 
         AttachmentViewInfo attachmentViewInfo = attachmentInfoExtractor.extractAttachmentInfoForDatabase(part);
 
@@ -120,8 +119,9 @@ public class AttachmentInfoExtractorTest {
 
     @Test
     public void extractInfoForDb__withDispositionAttach__shouldReturnNamedAttachment() throws Exception {
-        Part part = mock(Part.class);
-        when(part.getDisposition()).thenReturn("attachment" + "; filename=\"filename.ext\"; meaningless=\"dummy\"");
+        MimeBodyPart part = new MimeBodyPart();
+        part.setHeader(MimeHeader.HEADER_CONTENT_DISPOSITION,
+                "attachment" + "; filename=\"filename.ext\"; meaningless=\"dummy\"");
 
         AttachmentViewInfo attachmentViewInfo = attachmentInfoExtractor.extractAttachmentInfoForDatabase(part);
 
@@ -133,9 +133,10 @@ public class AttachmentInfoExtractorTest {
     @Test
     public void extractInfoForDb__withDispositionInlineAndContentId__shouldReturnInlineAttachment()
             throws Exception {
-        Part part = mock(Part.class);
-        when(part.getHeader(MimeHeader.HEADER_CONTENT_ID)).thenReturn(TEST_CONTENT_ID);
-        when(part.getDisposition()).thenReturn("inline" + ";\n  filename=\"filename.ext\";\n  meaningless=\"dummy\"");
+        Part part = new MimeBodyPart();
+        part.addRawHeader(MimeHeader.HEADER_CONTENT_ID, MimeHeader.HEADER_CONTENT_ID + ": " + TEST_CONTENT_ID);
+        part.addRawHeader(MimeHeader.HEADER_CONTENT_DISPOSITION, MimeHeader.HEADER_CONTENT_DISPOSITION + ": " +
+                "inline" + ";\n  filename=\"filename.ext\";\n  meaningless=\"dummy\"");
 
         AttachmentViewInfo attachmentViewInfo = attachmentInfoExtractor.extractAttachmentInfoForDatabase(part);
 
@@ -144,8 +145,8 @@ public class AttachmentInfoExtractorTest {
 
     @Test
     public void extractInfoForDb__withDispositionSizeParam__shouldReturnThatSize() throws Exception {
-        Part part = mock(Part.class);
-        when(part.getDisposition()).thenReturn("doesntmatter" + ";\n  size=\"" + TEST_SIZE + "\"");
+        MimeBodyPart part = new MimeBodyPart();
+        part.setHeader(MimeHeader.HEADER_CONTENT_DISPOSITION, "attachment" + "; size=\"" + TEST_SIZE + "\"");
 
         AttachmentViewInfo attachmentViewInfo = attachmentInfoExtractor.extractAttachmentInfoForDatabase(part);
 
@@ -154,12 +155,31 @@ public class AttachmentInfoExtractorTest {
 
     @Test
     public void extractInfoForDb__withDispositionInvalidSizeParam__shouldReturnUnknownSize() throws Exception {
-        Part part = mock(Part.class);
-        when(part.getDisposition()).thenReturn("doesntmatter" + "; size=\"notanint\"");
+        MimeBodyPart part = new MimeBodyPart();
+        part.setHeader(MimeHeader.HEADER_CONTENT_DISPOSITION, "attachment" + "; size=\"notanint\"");
 
         AttachmentViewInfo attachmentViewInfo = attachmentInfoExtractor.extractAttachmentInfoForDatabase(part);
 
         assertEquals(AttachmentViewInfo.UNKNOWN_SIZE, attachmentViewInfo.size);
+    }
+
+    @Test
+    public void extractInfoForDb__withNoBody__shouldReturnContentNotAvailable() throws Exception {
+        MimeBodyPart part = new MimeBodyPart();
+
+        AttachmentViewInfo attachmentViewInfo = attachmentInfoExtractor.extractAttachmentInfoForDatabase(part);
+
+        assertFalse(attachmentViewInfo.isContentAvailable);
+    }
+
+    @Test
+    public void extractInfoForDb__withNoBody__shouldReturnContentAvailable() throws Exception {
+        MimeBodyPart part = new MimeBodyPart();
+        part.setBody(new TextBody("data"));
+
+        AttachmentViewInfo attachmentViewInfo = attachmentInfoExtractor.extractAttachmentInfoForDatabase(part);
+
+        assertTrue(attachmentViewInfo.isContentAvailable);
     }
 
     @Test
@@ -173,11 +193,11 @@ public class AttachmentInfoExtractorTest {
         };
 
         DeferredFileBody body = mock(DeferredFileBody.class);
-        Part part = mock(Part.class);
-        when(part.getBody()).thenReturn(body);
-        when(part.getMimeType()).thenReturn(TEST_MIME_TYPE);
-
         when(body.getSize()).thenReturn(TEST_SIZE);
+
+        MimeBodyPart part = new MimeBodyPart();
+        part.setBody(body);
+        part.setHeader(MimeHeader.HEADER_CONTENT_TYPE, TEST_MIME_TYPE);
 
 
         AttachmentViewInfo attachmentViewInfo = attachmentInfoExtractor.extractAttachmentInfo(part);
@@ -187,5 +207,6 @@ public class AttachmentInfoExtractorTest {
         assertEquals(TEST_SIZE, attachmentViewInfo.size);
         assertEquals(TEST_MIME_TYPE, attachmentViewInfo.mimeType);
         assertFalse(attachmentViewInfo.inlineAttachment);
+        assertTrue(attachmentViewInfo.isContentAvailable);
     }
 }

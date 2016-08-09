@@ -1256,7 +1256,7 @@ public class MessageCompose extends K9Activity implements OnClickListener,
         attachmentPresenter.processMessageToForward(messageViewInfo);
     }
 
-    private void processDraftMessage(MessageViewInfo messageViewInfo) throws MessagingException {
+    private void processDraftMessage(MessageViewInfo messageViewInfo) {
         Message message = messageViewInfo.message;
         mDraftId = MessagingController.getInstance(getApplication()).getId(message);
         mSubjectView.setText(message.getSubject());
@@ -1276,7 +1276,7 @@ public class MessageCompose extends K9Activity implements OnClickListener,
         }
 
         if (!mSourceMessageProcessed) {
-            attachmentPresenter.loadAttachments(message, 0);
+            attachmentPresenter.loadNonInlineAttachments(messageViewInfo);
         }
 
         // Decode the identity header when loading a draft.
