@@ -64,7 +64,6 @@ android {
         testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
     }
 
-    final Console console = System.console();
     signingConfigs {
         releaseSigning {
             storeFile file(System.getenv("ANDROID_KEYSTORE"))
@@ -75,8 +74,8 @@ android {
     }
 
     task checkPasswords << {
-        def keyStorePass = new String(console.readPassword("\nKeystore password: "))
-        def keyPass  = new String(console.readPassword("Key password: "))
+        def keyStorePass = new String(System.console().readPassword("\nKeystore password: "))
+        def keyPass  = new String(System.console().readPassword("Key password: "))
         android.signingConfigs.releaseSigning.storePassword = keyStorePass
         android.signingConfigs.releaseSigning.keyPassword = keyPass
     }
