@@ -326,6 +326,9 @@ public class MessageCompose extends K9Activity implements OnClickListener,
             setContentView(R.layout.message_compose);
         }
 
+        // on api level 15, setContentView() shows the progress bar for some reason...
+        setProgressBarIndeterminateVisibility(false);
+
         final Intent intent = getIntent();
 
         mMessageReference = intent.getParcelableExtra(EXTRA_MESSAGE_REFERENCE);
@@ -360,6 +363,8 @@ public class MessageCompose extends K9Activity implements OnClickListener,
         ComposePgpInlineDecider composePgpInlineDecider = new ComposePgpInlineDecider();
         recipientPresenter = new RecipientPresenter(getApplicationContext(), getLoaderManager(), recipientMvpView,
                 mAccount, composePgpInlineDecider, new ReplyToParser());
+        recipientPresenter.updateCryptoStatus();
+
 
         mSubjectView = (EditText) findViewById(R.id.subject);
         mSubjectView.getInputExtras(true).putBoolean("allowEmoji", true);
