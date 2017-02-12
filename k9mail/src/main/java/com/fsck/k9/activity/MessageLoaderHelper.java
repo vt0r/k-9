@@ -202,7 +202,7 @@ public class MessageLoaderHelper {
             return;
         }
 
-        if (account.isOpenPgpProviderConfigured()) {
+        if (K9.isOpenPgpProviderConfigured()) {
             startOrResumeCryptoOperation();
             return;
         }
@@ -258,11 +258,11 @@ public class MessageLoaderHelper {
     // process with crypto helper
 
     private void startOrResumeCryptoOperation() {
-        RetainFragment<MessageCryptoHelper> retainCryptoHelperFragment = getMessageCryptoHelperRetainFragment();
+        RetainFragment<MessageCryptoHelper> retainCryptoHelperFragment = getMessageCryptoHelperRetainFragment(true);
         if (retainCryptoHelperFragment.hasData()) {
             messageCryptoHelper = retainCryptoHelperFragment.getData();
         } else {
-            messageCryptoHelper = new MessageCryptoHelper(context, account.getOpenPgpProvider());
+            messageCryptoHelper = new MessageCryptoHelper(context);
             retainCryptoHelperFragment.setData(messageCryptoHelper);
         }
         messageCryptoHelper.asyncStartOrResumeProcessingMessage(
@@ -270,7 +270,7 @@ public class MessageLoaderHelper {
     }
 
     private void cancelAndClearCryptoOperation() {
-        RetainFragment<MessageCryptoHelper> retainCryptoHelperFragment = getMessageCryptoHelperRetainFragment();
+        RetainFragment<MessageCryptoHelper> retainCryptoHelperFragment = getMessageCryptoHelperRetainFragment(false);
         if (retainCryptoHelperFragment != null) {
             if (retainCryptoHelperFragment.hasData()) {
                 messageCryptoHelper = retainCryptoHelperFragment.getData();
@@ -281,8 +281,12 @@ public class MessageLoaderHelper {
         }
     }
 
-    private RetainFragment<MessageCryptoHelper> getMessageCryptoHelperRetainFragment() {
-        return RetainFragment.findOrCreate(fragmentManager, "crypto_helper_" + messageReference.hashCode());
+    private RetainFragment<MessageCryptoHelper> getMessageCryptoHelperRetainFragment(boolean createIfNotExists) {
+        if (createIfNotExists) {
+            return RetainFragment.findOrCreate(fragmentManager, "crypto_helper_" + messageReference.hashCode());
+        } else {
+            return RetainFragment.findOrNull(fragmentManager, "crypto_helper_" + messageReference.hashCode());
+        }
     }
 
     private MessageCryptoCallback messageCryptoCallback = new MessageCryptoCallback() {
