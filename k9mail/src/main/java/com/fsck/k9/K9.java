@@ -30,7 +30,7 @@ import com.fsck.k9.Account.SortType;
 import com.fsck.k9.activity.MessageCompose;
 import com.fsck.k9.activity.UpgradeDatabases;
 import com.fsck.k9.controller.MessagingController;
-import com.fsck.k9.controller.MessagingListener;
+import com.fsck.k9.controller.SimpleMessagingListener;
 import com.fsck.k9.mail.Address;
 import com.fsck.k9.mail.K9MailLib;
 import com.fsck.k9.mail.Message;
@@ -106,7 +106,6 @@ public class K9 extends Application {
         ALWAYS, NEVER, WHEN_CHECKED_AUTO_SYNC
     }
 
-    private static String language = "";
     private static Theme theme = Theme.LIGHT;
     private static Theme messageViewTheme = Theme.USE_GLOBAL;
     private static Theme composerTheme = Theme.USE_GLOBAL;
@@ -473,7 +472,6 @@ public class K9 extends Application {
         editor.putString("openPgpProvider", sOpenPgpProvider);
         editor.putBoolean("openPgpSupportSignOnly", sOpenPgpSupportSignOnly);
 
-        editor.putString("language", language);
         editor.putInt("theme", theme.ordinal());
         editor.putInt("messageViewTheme", messageViewTheme.ordinal());
         editor.putInt("messageComposeTheme", composerTheme.ordinal());
@@ -553,7 +551,7 @@ public class K9 extends Application {
         setServicesEnabled(this);
         registerReceivers();
 
-        MessagingController.getInstance(this).addListener(new MessagingListener() {
+        MessagingController.getInstance(this).addListener(new SimpleMessagingListener() {
             private void broadcastIntent(String action, Account account, String folder, Message message) {
                 Uri uri = Uri.parse("email://messages/" + account.getAccountNumber() + "/" + Uri.encode(folder) + "/" + Uri.encode(message.getUid()));
                 Intent intent = new Intent(action, uri);
@@ -777,8 +775,6 @@ public class K9 extends Application {
         sPgpInlineDialogCounter = storage.getInt("pgpInlineDialogCounter", 0);
         sPgpSignOnlyDialogCounter = storage.getInt("pgpSignOnlyDialogCounter", 0);
 
-        K9.setK9Language(storage.getString("language", ""));
-
         int themeValue = storage.getInt("theme", Theme.LIGHT.ordinal());
         // We used to save the resource ID of the theme. So convert that to the new format if
         // necessary.
@@ -832,14 +828,6 @@ public class K9 extends Application {
                 observers.add(component);
             }
         }
-    }
-
-    public static String getK9Language() {
-        return language;
-    }
-
-    public static void setK9Language(String nlanguage) {
-        language = nlanguage;
     }
 
     /**
