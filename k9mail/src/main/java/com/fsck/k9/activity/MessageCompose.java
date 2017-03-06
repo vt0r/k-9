@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.regex.Pattern;
 
 import android.annotation.SuppressLint;
+import android.app.ActionBar;
 import android.app.AlertDialog;
 import android.app.AlertDialog.Builder;
 import android.app.Dialog;
@@ -28,7 +29,7 @@ import android.support.annotation.Nullable;
 import android.support.annotation.StringRes;
 import android.text.TextUtils;
 import android.text.TextWatcher;
-import android.util.Log;
+import timber.log.Timber;
 import android.util.TypedValue;
 import android.view.ContextThemeWrapper;
 import android.view.LayoutInflater;
@@ -92,6 +93,7 @@ import com.fsck.k9.message.PgpMessageBuilder;
 import com.fsck.k9.message.QuotedTextMode;
 import com.fsck.k9.message.SimpleMessageBuilder;
 import com.fsck.k9.message.SimpleMessageFormat;
+import com.fsck.k9.search.LocalSearch;
 import com.fsck.k9.ui.EolConvertingEditText;
 import com.fsck.k9.ui.compose.QuotedMessageMvpView;
 import com.fsck.k9.ui.compose.QuotedMessagePresenter;
@@ -207,6 +209,8 @@ public class MessageCompose extends K9Activity implements OnClickListener,
 
     private boolean isInSubActivity = false;
 
+    private boolean navigateUp;
+
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -231,6 +235,8 @@ public class MessageCompose extends K9Activity implements OnClickListener,
         } else {
             setContentView(R.layout.message_compose);
         }
+
+        initializeActionBar();
 
         // on api level 15, setContentView() shows the progress bar for some reason...
         setProgressBarIndeterminateVisibility(false);
@@ -345,7 +351,7 @@ public class MessageCompose extends K9Activity implements OnClickListener,
                 this.action = Action.EDIT_DRAFT;
             } else {
                 // This shouldn't happen
-                Log.w(K9.LOG_TAG, "MessageCompose was started with an unsupported action");
+                Timber.w("MessageCompose was started with an unsupported action");
                 this.action = Action.COMPOSE;
             }
         }
@@ -734,7 +740,11 @@ public class MessageCompose extends K9Activity implements OnClickListener,
         }
         internalMessageHandler.sendEmptyMessage(MSG_DISCARDED_DRAFT);
         changesMadeSinceLastSave = false;
-        finish();
+        if (navigateUp) {
+            openAutoExpandFolder();
+        } else {
+            finish();
+        }
     }
 
     private void onReadReceipt() {
@@ -764,7 +774,7 @@ public class MessageCompose extends K9Activity implements OnClickListener,
         if ((requestCode & REQUEST_MASK_MESSAGE_BUILDER) == REQUEST_MASK_MESSAGE_BUILDER) {
             requestCode ^= REQUEST_MASK_MESSAGE_BUILDER;
             if (currentMessageBuilder == null) {
-                Log.e(K9.LOG_TAG, "Got a message builder activity result for no message builder, " +
+                Timber.e("Got a message builder activity result for no message builder, " +
                         "this is an illegal state!");
                 return;
             }
@@ -792,9 +802,7 @@ public class MessageCompose extends K9Activity implements OnClickListener,
 
     private void onAccountChosen(Account account, Identity identity) {
         if (!this.account.equals(account)) {
-            if (K9.DEBUG) {
-                Log.v(K9.LOG_TAG, "Switching account from " + this.account + " to " + account);
-            }
+            Timber.v("Switching account from %s to %s", this.account, account);
 
             // on draft edit, make sure we don't keep previous message UID
             if (action == Action.EDIT_DRAFT) {
@@ -812,15 +820,12 @@ public class MessageCompose extends K9Activity implements OnClickListener,
                 // actual account switch
                 this.account = account;
 
-                if (K9.DEBUG) {
-                    Log.v(K9.LOG_TAG, "Account switch, saving new draft in new account");
-                }
+                Timber.v("Account switch, saving new draft in new account");
                 checkToSaveDraftImplicitly();
 
                 if (previousDraftId != INVALID_DRAFT_ID) {
-                    if (K9.DEBUG) {
-                        Log.v(K9.LOG_TAG, "Account switch, deleting draft from previous account: " + previousDraftId);
-                    }
+                    Timber.v("Account switch, deleting draft from previous account: %d", previousDraftId);
+
                     MessagingController.getInstance(getApplication()).deleteDraft(previousAccount,
                             previousDraftId);
                 }
@@ -925,6 +930,9 @@ public class MessageCompose extends K9Activity implements OnClickListener,
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
         switch (item.getItemId()) {
+            case android.R.id.home:
+                prepareToFinish(true);
+                break;
             case R.id.send:
                 checkToSendMessage();
                 break;
@@ -992,6 +1000,12 @@ public class MessageCompose extends K9Activity implements OnClickListener,
 
     @Override
     public void onBackPressed() {
+        prepareToFinish(false);
+    }
+
+    private void prepareToFinish(boolean shouldNavigateUp) {
+        navigateUp = shouldNavigateUp;
+
         if (changesMadeSinceLastSave && draftIsNotEmpty()) {
             if (!account.hasDraftsFolder()) {
                 showDialog(DIALOG_CONFIRM_DISCARD_ON_BACK);
@@ -1003,9 +1017,22 @@ public class MessageCompose extends K9Activity implements OnClickListener,
             if (draftId == INVALID_DRAFT_ID) {
                 onDiscard();
             } else {
-                super.onBackPressed();
+                if (navigateUp) {
+                    openAutoExpandFolder();
+                } else {
+                    super.onBackPressed();
+                }
             }
         }
+    }
+
+    private void openAutoExpandFolder() {
+        String folder = account.getAutoExpandFolderName();
+        LocalSearch search = new LocalSearch(folder);
+        search.addAccountUuid(account.getUuid());
+        search.addAllowedFolder(folder);
+        MessageList.actionDisplaySearch(this, search, false, true);
+        finish();
     }
 
     private boolean draftIsNotEmpty() {
@@ -1148,7 +1175,7 @@ public class MessageCompose extends K9Activity implements OnClickListener,
                     break;
                 }
                 default: {
-                    Log.w(K9.LOG_TAG, "processSourceMessage() called with unsupported action");
+                    Timber.w("processSourceMessage() called with unsupported action");
                     break;
                 }
             }
@@ -1157,7 +1184,7 @@ public class MessageCompose extends K9Activity implements OnClickListener,
              * Let the user continue composing their message even if we have a problem processing
              * the source message. Log it as an error, though.
              */
-            Log.e(K9.LOG_TAG, "Error while processing source message: ", me);
+            Timber.e(me, "Error while processing source message: ");
         } finally {
             relatedMessageProcessed = true;
             changesMadeSinceLastSave = false;
@@ -1199,9 +1226,7 @@ public class MessageCompose extends K9Activity implements OnClickListener,
             }
 
         } else {
-            if (K9.DEBUG) {
-                Log.d(K9.LOG_TAG, "could not get Message-ID.");
-            }
+            Timber.d("could not get Message-ID.");
         }
 
         // Quote the message and setup the UI.
@@ -1235,9 +1260,7 @@ public class MessageCompose extends K9Activity implements OnClickListener,
             repliedToMessageId = message.getMessageId();
             referencedMessageIds = repliedToMessageId;
         } else {
-            if (K9.DEBUG) {
-                Log.d(K9.LOG_TAG, "could not get Message-ID.");
-            }
+            Timber.d("could not get Message-ID.");
         }
 
         // Quote the message and setup the UI.
@@ -1352,7 +1375,7 @@ public class MessageCompose extends K9Activity implements OnClickListener,
                 contacts.markAsContacted(message.getRecipients(RecipientType.BCC));
                 updateReferencedMessage();
             } catch (Exception e) {
-                Log.e(K9.LOG_TAG, "Failed to mark contact as contacted.", e);
+                Timber.e(e, "Failed to mark contact as contacted.");
             }
 
             MessagingController.getInstance(context).sendMessage(account, message, null);
@@ -1369,12 +1392,11 @@ public class MessageCompose extends K9Activity implements OnClickListener,
          **/
         private void updateReferencedMessage() {
             if (messageReference != null && messageReference.getFlag() != null) {
-                if (K9.DEBUG) {
-                    Log.d(K9.LOG_TAG, "Setting referenced message (" +
-                            messageReference.getFolderName() + ", " +
-                            messageReference.getUid() + ") flag to " +
-                            messageReference.getFlag());
-                }
+                Timber.d("Setting referenced message (%s, %s) flag to %s",
+                        messageReference.getFolderName(),
+                        messageReference.getUid(),
+                        messageReference.getFlag());
+
                 final Account account = Preferences.getPreferences(context)
                         .getAccount(messageReference.getAccountUuid());
                 final String folderName = messageReference.getFolderName();
@@ -1481,7 +1503,7 @@ public class MessageCompose extends K9Activity implements OnClickListener,
 
     @Override
     public void onMessageBuildException(MessagingException me) {
-        Log.e(K9.LOG_TAG, "Error sending message", me);
+        Timber.e(me, "Error sending message");
         Toast.makeText(MessageCompose.this,
                 getString(R.string.send_failed_reason, me.getLocalizedMessage()), Toast.LENGTH_LONG).show();
         currentMessageBuilder = null;
@@ -1494,7 +1516,7 @@ public class MessageCompose extends K9Activity implements OnClickListener,
         try {
             startIntentSenderForResult(pendingIntent.getIntentSender(), requestCode, null, 0, 0, 0);
         } catch (SendIntentException e) {
-            Log.e(K9.LOG_TAG, "Error starting pending intent from builder!", e);
+            Timber.e(e, "Error starting pending intent from builder!");
         }
     }
 
@@ -1518,7 +1540,7 @@ public class MessageCompose extends K9Activity implements OnClickListener,
             } catch (MessagingException e) {
                 // Hm, if we couldn't populate the UI after source reprocessing, let's just delete it?
                 quotedMessagePresenter.showOrHideQuotedText(QuotedTextMode.HIDE);
-                Log.e(K9.LOG_TAG, "Could not re-process source message; deleting quoted text to be safe.", e);
+                Timber.e(e, "Could not re-process source message; deleting quoted text to be safe.");
             }
             updateMessageFormat();
         } else {
@@ -1563,7 +1585,7 @@ public class MessageCompose extends K9Activity implements OnClickListener,
                 requestCode |= REQUEST_MASK_LOADER_HELPER;
                 startIntentSenderForResult(si, requestCode, fillIntent, flagsMask, flagValues, extraFlags);
             } catch (SendIntentException e) {
-                Log.e(K9.LOG_TAG, "Irrecoverable error calling PendingIntent!", e);
+                Timber.e(e, "Irrecoverable error calling PendingIntent!");
             }
         }
 
@@ -1587,6 +1609,11 @@ public class MessageCompose extends K9Activity implements OnClickListener,
             });
         }
     };
+
+    private void initializeActionBar() {
+        ActionBar actionBar = getActionBar();
+        actionBar.setDisplayHomeAsUpEnabled(true);
+    }
 
     // TODO We miss callbacks for this listener if they happens while we are paused!
     public MessagingListener messagingListener = new SimpleMessagingListener() {
